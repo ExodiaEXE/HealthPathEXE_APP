@@ -88,7 +88,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0, end: 1),
                     duration: const Duration(milliseconds: 600),
-                    curve: Curves.easeOut,
+                    curve: Curves.easeInOut,
                     builder: (context, v, child) => Transform.translate(
                       offset: Offset(0, 20 * (1 - v)),
                       child: Opacity(opacity: v, child: child),
@@ -109,7 +109,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                         const SizedBox(height: 12),
                         const Text('HealthPath', style: AppTypography.display),
-                        const Text('Hanh trinh suc khoe cua rieng ban', style: AppTypography.bodySm),
+                        const Text('Hành trình sức khỏe của riêng bạn', style: AppTypography.bodySm),
                       ],
                     ),
                   ),
@@ -178,7 +178,7 @@ class _AuthScreenState extends State<AuthScreen> {
             const Expanded(child: Divider(color: AppColors.border, height: 1)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text('hoac', style: AppTypography.micro.copyWith(color: const Color(0xFFAAAAAA))),
+              child: Text('hoặc', style: AppTypography.micro.copyWith(color: const Color(0xFFAAAAAA))),
             ),
             const Expanded(child: Divider(color: AppColors.border, height: 1)),
           ],
@@ -189,7 +189,7 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Dang nhap', textAlign: TextAlign.center, style: AppTypography.title),
+        const Text('Đăng nhập', textAlign: TextAlign.center, style: AppTypography.title),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -211,7 +211,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _orDivider(),
         HpTextField(controller: _email, hint: 'Email', prefixIcon: Icons.mail_outline, keyboardType: TextInputType.emailAddress),
         const SizedBox(height: 10),
-        HpTextField(controller: _password, hint: 'Mat khau', prefixIcon: Icons.lock_outline, obscureText: true),
+        HpTextField(controller: _password, hint: 'Mật khẩu', prefixIcon: Icons.lock_outline, obscureText: true),
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
@@ -219,11 +219,11 @@ class _AuthScreenState extends State<AuthScreen> {
               _forgotEmail.text = _email.text;
               setState(() => _view = _AuthView.forgotEmail);
             },
-            child: const Text('Quen mat khau?', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary)),
+            child: const Text('Quên mật khẩu?', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary)),
           ),
         ),
         HpPrimaryButton(
-          label: 'Dang nhap',
+          label: 'Đăng nhập',
           loading: _loading,
           onPressed: () => _delay(() async {
             await app.completeAuth(email: _email.text.isEmpty ? 'user@healthpath.vn' : _email.text);
@@ -236,7 +236,7 @@ class _AuthScreenState extends State<AuthScreen> {
               app.setAuthState(AuthState.register);
               setState(() => _view = _AuthView.register);
             },
-            child: const Text.rich(TextSpan(text: 'Chua co tai khoan? ', children: [TextSpan(text: 'Dang ky', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary))])),
+            child: const Text.rich(TextSpan(text: 'Chưa có tài khoản? ', children: [TextSpan(text: 'Đăng ký', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary))])),
           ),
         ),
       ],
@@ -251,19 +251,19 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Dang ky', textAlign: TextAlign.center, style: AppTypography.title),
+        const Text('Đăng ký', textAlign: TextAlign.center, style: AppTypography.title),
         const SizedBox(height: 16),
-        HpTextField(controller: _name, hint: 'Ho va ten', prefixIcon: Icons.person_outline),
+        HpTextField(controller: _name, hint: 'Họ và tên', prefixIcon: Icons.person_outline),
         const SizedBox(height: 10),
         HpTextField(controller: _email, hint: 'Email', prefixIcon: Icons.mail_outline, keyboardType: TextInputType.emailAddress),
         const SizedBox(height: 10),
-        HpTextField(controller: _password, hint: 'Mat khau', prefixIcon: Icons.lock_outline, obscureText: true, onChanged: (_) => setState(() {})),
+        HpTextField(controller: _password, hint: 'Mật khẩu', prefixIcon: Icons.lock_outline, obscureText: true, onChanged: (_) => setState(() {})),
         if (_password.text.isNotEmpty) _passwordRules(_password.text),
         const SizedBox(height: 10),
-        HpTextField(controller: _confirmPassword, hint: 'Xac nhan mat khau', prefixIcon: Icons.lock_outline, obscureText: true, onChanged: (_) => setState(() {})),
+        HpTextField(controller: _confirmPassword, hint: 'Xác nhận mật khẩu', prefixIcon: Icons.lock_outline, obscureText: true, onChanged: (_) => setState(() {})),
         const SizedBox(height: 12),
         HpPrimaryButton(
-          label: 'Tiep tuc',
+          label: 'Tiếp tục',
           loading: _loading,
           onPressed: valid
               ? () => _delay(() async {
@@ -284,12 +284,12 @@ class _AuthScreenState extends State<AuthScreen> {
       children: [
         Align(alignment: Alignment.centerLeft, child: IconButton(onPressed: () => setState(() => _view = _AuthView.register), icon: const Icon(Icons.arrow_back, size: 18))),
         const Icon(Icons.verified_user, size: 48, color: AppColors.accent),
-        const Text('Xac thuc email', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Xác thực email', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 8),
         OtpInput(onChanged: (v) => _regOtp = v),
         const SizedBox(height: 16),
         HpPrimaryButton(
-          label: 'Xac nhan & Dang ky',
+          label: 'Xác nhận & đăng ký',
           loading: _loading,
           onPressed: _regOtp.length == 6
               ? () => _delay(() async {
@@ -307,9 +307,9 @@ class _AuthScreenState extends State<AuthScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           IconButton(onPressed: () => setState(() => _view = _AuthView.login), icon: const Icon(Icons.arrow_back)),
-          const Text('Quen mat khau', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('Quên mật khẩu', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          HpTextField(controller: _forgotEmail, hint: 'Email dang ky', prefixIcon: Icons.mail_outline, keyboardType: TextInputType.emailAddress),
+          HpTextField(controller: _forgotEmail, hint: 'Email đăng ký', prefixIcon: Icons.mail_outline, keyboardType: TextInputType.emailAddress),
           const SizedBox(height: 12),
           HpPrimaryButton(
             label: 'Gui ma xac thuc',
@@ -327,7 +327,7 @@ class _AuthScreenState extends State<AuthScreen> {
           OtpInput(onChanged: (v) => _forgotOtp = v),
           const SizedBox(height: 12),
           HpPrimaryButton(
-            label: 'Xac nhan',
+            label: 'Xác nhận',
             loading: _loading,
             onPressed: _forgotOtp.length == 6
                 ? () => _delay(() async {
@@ -342,12 +342,12 @@ class _AuthScreenState extends State<AuthScreen> {
     final ok = _isPasswordValid(_newPw.text) && _newPw.text == _confirmPw.text;
     return Column(
       children: [
-        HpTextField(controller: _newPw, hint: 'Mat khau moi', prefixIcon: Icons.lock_outline, obscureText: true),
+        HpTextField(controller: _newPw, hint: 'Mật khẩu mới', prefixIcon: Icons.lock_outline, obscureText: true),
         const SizedBox(height: 8),
-        HpTextField(controller: _confirmPw, hint: 'Xac nhan', prefixIcon: Icons.lock_outline, obscureText: true),
+        HpTextField(controller: _confirmPw, hint: 'Xác nhận', prefixIcon: Icons.lock_outline, obscureText: true),
         const SizedBox(height: 12),
         HpPrimaryButton(
-          label: 'Dat lai mat khau',
+          label: 'Đặt lại mật khẩu',
           loading: _loading,
           onPressed: ok
               ? () => _delay(() async {
@@ -362,19 +362,19 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _forgotDoneForm() => Column(
         children: [
           const Icon(Icons.check_circle, color: AppColors.primary, size: 56),
-          const Text('Dat lai thanh cong!', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('Đặt lại thành công', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          HpPrimaryButton(label: 'Quay ve dang nhap', onPressed: () => setState(() => _view = _AuthView.login)),
+          HpPrimaryButton(label: 'Quay về đăng nhập', onPressed: () => setState(() => _view = _AuthView.login)),
         ],
       );
 
   Widget _passwordRules(String pw) {
     final rules = [
-      ('Toi thieu 8 ky tu', pw.length >= 8),
-      ('Co chu in hoa', RegExp(r'[A-Z]').hasMatch(pw)),
-      ('Co chu thuong', RegExp(r'[a-z]').hasMatch(pw)),
-      ('Co so', RegExp(r'\d').hasMatch(pw)),
-      ('Co ky tu dac biet', RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(pw)),
+      ('Tối thiểu 8 ký tự', pw.length >= 8),
+      ('Có chữ in hoa', RegExp(r'[A-Z]').hasMatch(pw)),
+      ('Có chữ in thường', RegExp(r'[a-z]').hasMatch(pw)),
+      ('Có số', RegExp(r'\d').hasMatch(pw)),
+      ('Có ký tự đặc biệt', RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(pw)),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

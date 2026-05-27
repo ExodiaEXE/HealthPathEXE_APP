@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:health/core/constants/app_colors.dart';
 import 'package:health/core/theme/app_typography.dart';
@@ -42,11 +44,13 @@ class _AuthScreenState extends State<AuthScreen> {
   String _regOtp = '';
   String _forgotOtp = '';
   int _regResendCooldown = 0;
+  Timer? _resendTimer;
   bool _showSocialDialog = false;
   AuthProviderType? _pendingSocial;
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
@@ -55,6 +59,21 @@ class _AuthScreenState extends State<AuthScreen> {
     _newPw.dispose();
     _confirmPw.dispose();
     super.dispose();
+  }
+
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    setState(() => _regResendCooldown = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _regResendCooldown--;
+        if (_regResendCooldown <= 0) timer.cancel();
+      });
+    });
   }
 
   bool _isPasswordValid(String pw) {
@@ -267,14 +286,12 @@ class _AuthScreenState extends State<AuthScreen> {
           loading: _loading,
           onPressed: valid
               ? () => _delay(() async {
-                    setState(() {
-                      _view = _AuthView.registerOtp;
-                      _regResendCooldown = 60;
-                    });
+                    setState(() => _view = _AuthView.registerOtp);
+                    _startResendCooldown();
                   })
               : null,
         ),
-        TextButton(onPressed: () { app.setAuthState(AuthState.login); setState(() => _view = _AuthView.login); }, child: const Text('Da co tai khoan? Dang nhap')),
+        TextButton(onPressed: () { app.setAuthState(AuthState.login); setState(() => _view = _AuthView.login); }, child: const Text('Đã có tài khoản? Đăng nhập')),
       ],
     );
   }
@@ -287,7 +304,15 @@ class _AuthScreenState extends State<AuthScreen> {
         const Text('Xác thực email', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 8),
         OtpInput(onChanged: (v) => _regOtp = v),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: _regResendCooldown > 0 ? null : _startResendCooldown,
+          child: Text(
+            _regResendCooldown > 0 ? 'Gửi lại sau ${_regResendCooldown}s' : 'Gửi lại mã',
+            style: TextStyle(fontSize: 12, color: _regResendCooldown > 0 ? AppColors.muted : AppColors.primary, fontWeight: FontWeight.w600),
+          ),
+        ),
+        const SizedBox(height: 8),
         HpPrimaryButton(
           label: 'Xác nhận & đăng ký',
           loading: _loading,
@@ -312,7 +337,7 @@ class _AuthScreenState extends State<AuthScreen> {
           HpTextField(controller: _forgotEmail, hint: 'Email đăng ký', prefixIcon: Icons.mail_outline, keyboardType: TextInputType.emailAddress),
           const SizedBox(height: 12),
           HpPrimaryButton(
-            label: 'Gui ma xac thuc',
+            label: 'Gửi mã xác thực',
             loading: _loading,
             onPressed: () => _delay(() async {
               setState(() => _view = _AuthView.forgotOtp);
@@ -406,15 +431,15 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Lien ket tai khoan', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Liên kết tài khoản', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('Tai khoan ${_pendingSocial == AuthProviderType.google ? 'Google' : 'Facebook'} se duoc lien ket.'),
+                  Text('Tài khoản ${_pendingSocial == AuthProviderType.google ? 'Google' : 'Facebook'} sẽ được liên kết.'),
                   const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
                         child: HpPrimaryButton(
-                          label: 'Dong y',
+                          label: 'Đồng ý',
                           onPressed: () async {
                             setState(() => _showSocialDialog = false);
                             final email = _pendingSocial == AuthProviderType.google ? 'user@gmail.com' : 'user@facebook.com';
@@ -426,7 +451,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Expanded(child: OutlinedButton(onPressed: () => setState(() => _showSocialDialog = false), child: const Text('Huy'))),
+                      Expanded(child: OutlinedButton(onPressed: () => setState(() => _showSocialDialog = false), child: const Text('Hủy'))),
                     ],
                   ),
                 ],

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:health/main.dart';
 
@@ -8,6 +7,6 @@ void main() {
     await tester.pump();
 
     expect(find.text('HealthPath'), findsOneWidget);
-    expect(find.text('Dang nhap'), findsWidgets);
+    expect(find.text('Đăng nhập'), findsWidgets);
   });
 }

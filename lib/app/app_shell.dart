@@ -53,20 +53,14 @@ class AppShell extends StatelessWidget {
                       }
                       app.navigateTo(tab);
                     },
-                  ),
-                  floatingActionButton: FloatingActionButton.small(
-                    heroTag: 'companion',
-                    elevation: 4,
-                    backgroundColor: AppColors.accent,
-                    onPressed: () => Navigator.of(context).push(
+                    onCompanionTap: () => Navigator.of(context).push(
                       PageRouteBuilder<void>(
-                        pageBuilder: (_, __, ___) => const CompanionScreen(),
-                        transitionsBuilder: (_, anim, __, child) =>
+                        pageBuilder: (context2, a1, a2) => const CompanionScreen(),
+                        transitionsBuilder: (context3, anim, secondAnim, child) =>
                             FadeTransition(opacity: anim, child: child),
                         transitionDuration: const Duration(milliseconds: 200),
                       ),
                     ),
-                    child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 20),
                   ),
                 ),
               ),
@@ -116,15 +110,19 @@ class AppShell extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+              border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.2)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Luu tai khoan?', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('Email: ${creds.email}', style: const TextStyle(fontSize: 11)),
-                const Text('Mat khau: ********', style: TextStyle(fontSize: 11)),
+                const Text('Luu tai khoan?',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Email: ${creds.email}',
+                    style: const TextStyle(fontSize: 11)),
+                const Text('Mat khau: ********',
+                    style: TextStyle(fontSize: 11)),
                 const SizedBox(height: 8),
                 Row(
                   children: [

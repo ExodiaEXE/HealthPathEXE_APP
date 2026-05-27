@@ -3,35 +3,35 @@ import 'package:health/shared/models/app_models.dart';
 abstract final class MockData {
   static const habitsByEnergy = {
     EnergyLevel.low: [
-      RoutineItem(id: 'l1', text: 'Tho sau 3 phut'),
-      RoutineItem(id: 'l2', text: 'Nham mat thu gian'),
-      RoutineItem(id: 'l3', text: 'Nghe nhac nhe 5 phut'),
+      RoutineItem(id: 'l1', text: 'Thở sâu 3 phút'),
+      RoutineItem(id: 'l2', text: 'Nhắm mắt thư giãn'),
+      RoutineItem(id: 'l3', text: 'Nghe nhạc nhẹ 5 phút'),
     ],
     EnergyLevel.medium: [
-      RoutineItem(id: 'm1', text: 'Gian co co tai ban'),
-      RoutineItem(id: 'm2', text: 'Di bo 5 phut'),
-      RoutineItem(id: 'm3', text: 'Viet 3 dieu biet on'),
+      RoutineItem(id: 'm1', text: 'Giãn cơ cổ tại bàn'),
+      RoutineItem(id: 'm2', text: 'Đi bộ 5 phút'),
+      RoutineItem(id: 'm3', text: 'Viết 3 điều biết ơn'),
     ],
     EnergyLevel.high: [
-      RoutineItem(id: 'h1', text: 'Gian co toan than'),
-      RoutineItem(id: 'h2', text: 'Di bo 15 phut'),
-      RoutineItem(id: 'h3', text: 'Tap the duc 10 phut'),
+      RoutineItem(id: 'h1', text: 'Giãn cơ toàn thân'),
+      RoutineItem(id: 'h2', text: 'Đi bộ 15 phút'),
+      RoutineItem(id: 'h3', text: 'Tập thể dục 10 phút'),
     ],
   };
 
   static const routineSuggestionPool = [
-    RoutineSuggestion(id: 'rs1', text: 'Tap yoga 10 phut', icon: 'yoga', note: 'Tot cho giam cang thang'),
-    RoutineSuggestion(id: 'rs2', text: 'Doc sach 15 phut', icon: 'book', note: 'Thu gian tri oc'),
-    RoutineSuggestion(id: 'rs3', text: 'Thien 5 phut', icon: 'brain', note: 'Tang tap trung'),
-    RoutineSuggestion(id: 'rs4', text: 'Ghi nhat ky', icon: 'pencil', note: 'Giai toa cam xuc'),
-    RoutineSuggestion(id: 'rs5', text: 'Uong nuoc am', icon: 'cup', note: 'Khoi dong co the'),
-    RoutineSuggestion(id: 'rs6', text: 'Gian co 5 phut', icon: 'stretch', note: 'Giam dau co'),
-    RoutineSuggestion(id: 'rs7', text: 'Nghe podcast', icon: 'headphones', note: 'Hoc dieu moi'),
-    RoutineSuggestion(id: 'rs8', text: 'Di dao 10 phut', icon: 'walk', note: 'Nang cao nang luong'),
-    RoutineSuggestion(id: 'rs9', text: 'Tap tho bung', icon: 'wind', note: 'Binh tinh tam tri'),
-    RoutineSuggestion(id: 'rs10', text: 'Viet muc tieu ngay', icon: 'target', note: 'Dinh huong ro rang'),
-    RoutineSuggestion(id: 'rs11', text: 'Nghe nhac thu gian', icon: 'music', note: 'Giam lo au'),
-    RoutineSuggestion(id: 'rs12', text: 'Tap plank 1 phut', icon: 'dumbbell', note: 'Tang suc ben'),
+    RoutineSuggestion(id: 'rs1', text: 'Tập yoga 10 phút', icon: 'yoga', note: 'Tốt cho giảm căng thẳng'),
+    RoutineSuggestion(id: 'rs2', text: 'Đọc sách 15 phút', icon: 'book', note: 'Thư giãn trí óc'),
+    RoutineSuggestion(id: 'rs3', text: 'Thiền 5 phút', icon: 'brain', note: 'Tăng tập trung'),
+    RoutineSuggestion(id: 'rs4', text: 'Ghi nhật ký', icon: 'pencil', note: 'Giải tỏa cảm xúc'),
+    RoutineSuggestion(id: 'rs5', text: 'Uống nước ấm', icon: 'cup', note: 'Khởi động cơ thể'),
+    RoutineSuggestion(id: 'rs6', text: 'Giãn cơ 5 phút', icon: 'stretch', note: 'Giảm đau cơ'),
+    RoutineSuggestion(id: 'rs7', text: 'Nghe podcast', icon: 'headphones', note: 'Học điều mới'),
+    RoutineSuggestion(id: 'rs8', text: 'Đi dạo 10 phút', icon: 'walk', note: 'Nâng cao năng lượng'),
+    RoutineSuggestion(id: 'rs9', text: 'Tập thở bụng', icon: 'wind', note: 'Bình tĩnh tâm trí'),
+    RoutineSuggestion(id: 'rs10', text: 'Viết mục tiêu ngày', icon: 'target', note: 'Định hướng rõ ràng'),
+    RoutineSuggestion(id: 'rs11', text: 'Nghe nhạc thư giãn', icon: 'music', note: 'Giảm lo âu'),
+    RoutineSuggestion(id: 'rs12', text: 'Tập plank 1 phút', icon: 'dumbbell', note: 'Tăng sức bền'),
   ];
 
   static const suggestionEmojis = {
@@ -51,69 +51,69 @@ abstract final class MockData {
 
   static const moodTracks = {
     0: [
-      MoodTrack(title: 'Tieng mua tinh lang', artist: 'Nature Sounds', emoji: '🌧️', color: 0xFF4A90C8, category: 'Nhe nhang'),
-      MoodTrack(title: 'Piano buoi sang', artist: 'Keys & Soul', emoji: '🎹', color: 0xFF8A7EC8, category: 'Thu gian'),
-      MoodTrack(title: 'Khong gian yen tinh', artist: 'Ambient World', emoji: '✨', color: 0xFF8A7EC8, category: 'Ambient'),
+      MoodTrack(title: 'Tiếng mưa tĩnh lặng', artist: 'Nature Sounds', emoji: '🌧️', color: 0xFF4A90C8, category: 'Nhẹ nhàng'),
+      MoodTrack(title: 'Piano buổi sáng', artist: 'Keys & Soul', emoji: '🎹', color: 0xFF8A7EC8, category: 'Thư giãn'),
+      MoodTrack(title: 'Không gian yên tĩnh', artist: 'Ambient World', emoji: '✨', color: 0xFF8A7EC8, category: 'Ambient'),
     ],
     1: [
-      MoodTrack(title: 'Guitar nhe nhang', artist: 'Acoustic Lab', emoji: '🎸', color: 0xFF7AB86D, category: 'Acoustic'),
-      MoodTrack(title: 'Song bien ban mai', artist: 'Ocean Studio', emoji: '🌊', color: 0xFFD4855A, category: 'Thien nhien'),
-      MoodTrack(title: 'Tieng chim ban mai', artist: 'Nature Sounds', emoji: '🐦', color: 0xFF7AB86D, category: 'Thien nhien'),
+      MoodTrack(title: 'Guitar nhẹ nhàng', artist: 'Acoustic Lab', emoji: '🎸', color: 0xFF7AB86D, category: 'Acoustic'),
+      MoodTrack(title: 'Sóng biển ban mai', artist: 'Ocean Studio', emoji: '🌊', color: 0xFFD4855A, category: 'Thiên nhiên'),
+      MoodTrack(title: 'Tiếng chim ban mai', artist: 'Nature Sounds', emoji: '🐦', color: 0xFF7AB86D, category: 'Thiên nhiên'),
     ],
     2: [
-      MoodTrack(title: 'Giai dieu thien sau', artist: 'Meditation FM', emoji: '🧘', color: 0xFF5B8C4A, category: 'Thien'),
-      MoodTrack(title: 'Nhip tho can bang', artist: 'Meditation FM', emoji: '💮', color: 0xFF5B8C4A, category: 'Thien'),
-      MoodTrack(title: 'Tieng suoi chay', artist: 'Nature Sounds', emoji: '🌿', color: 0xFF4A90C8, category: 'Thien nhien'),
+      MoodTrack(title: 'Giai điệu thiền sâu', artist: 'Meditation FM', emoji: '🧘', color: 0xFF5B8C4A, category: 'Thiền'),
+      MoodTrack(title: 'Nhịp thở cân bằng', artist: 'Meditation FM', emoji: '💮', color: 0xFF5B8C4A, category: 'Thiền'),
+      MoodTrack(title: 'Tiếng suối chảy', artist: 'Nature Sounds', emoji: '🌿', color: 0xFF4A90C8, category: 'Thiên nhiên'),
     ],
   };
 
   static const moods = [
-    (emoji: '😩', label: 'Met'),
-    (emoji: '😐', label: 'On'),
-    (emoji: '😤', label: 'Cang thang'),
+    (emoji: '😩', label: 'Mệt'),
+    (emoji: '😐', label: 'Ổn'),
+    (emoji: '😤', label: 'Căng thẳng'),
   ];
 
   static const energyOptions = [
-    (level: EnergyLevel.low, label: 'Met', emoji: '🥱'),
-    (level: EnergyLevel.medium, label: 'On', emoji: '😌'),
-    (level: EnergyLevel.high, label: 'Tran day', emoji: '💪'),
+    (level: EnergyLevel.low, label: 'Mệt', emoji: '🥱'),
+    (level: EnergyLevel.medium, label: 'Ổn', emoji: '😌'),
+    (level: EnergyLevel.high, label: 'Tràn đầy', emoji: '💪'),
   ];
 
   static const weekDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
   static const allTracks = [
-    AudioTrack(id: 1, title: 'Tieng mua tinh lang', artist: 'Nature Sounds', duration: '5:30', color: 0xFF4A90C8, emoji: '🌧️', categories: ['nature', 'soft'], recommendFor: [EnergyLevel.low]),
-    AudioTrack(id: 2, title: 'Giai dieu thien sau', artist: 'Meditation FM', duration: '8:15', color: 0xFF5B8C4A, emoji: '🧘', categories: ['meditation'], recommendFor: [EnergyLevel.low, EnergyLevel.medium]),
-    AudioTrack(id: 3, title: 'Song bien ban mai', artist: 'Ocean Studio', duration: '6:45', color: 0xFFD4855A, emoji: '🌊', categories: ['nature', 'ambient'], recommendFor: [EnergyLevel.medium]),
-    AudioTrack(id: 4, title: 'Guitar nhe nhang', artist: 'Acoustic Lab', duration: '4:20', color: 0xFF7AB86D, emoji: '🎸', categories: ['acoustic', 'soft'], recommendFor: [EnergyLevel.medium, EnergyLevel.high]),
-    AudioTrack(id: 5, title: 'Piano buoi sang', artist: 'Keys & Soul', duration: '5:00', color: 0xFF8A7EC8, emoji: '🎹', categories: ['soft', 'acoustic'], recommendFor: [EnergyLevel.low, EnergyLevel.medium]),
-    AudioTrack(id: 6, title: 'Tieng suoi chay', artist: 'Nature Sounds', duration: '7:10', color: 0xFF4A90C8, emoji: '🌿', categories: ['nature', 'ambient'], recommendFor: [EnergyLevel.low]),
-    AudioTrack(id: 7, title: 'Nhip tho can bang', artist: 'Meditation FM', duration: '10:00', color: 0xFF5B8C4A, emoji: '💮', categories: ['meditation'], recommendFor: [EnergyLevel.low, EnergyLevel.medium]),
-    AudioTrack(id: 8, title: 'Ukulele vui tuoi', artist: 'Acoustic Lab', duration: '3:45', color: 0xFFD4855A, emoji: '🎵', categories: ['acoustic'], recommendFor: [EnergyLevel.high]),
-    AudioTrack(id: 9, title: 'Khong gian yen tinh', artist: 'Ambient World', duration: '12:00', color: 0xFF8A7EC8, emoji: '✨', categories: ['ambient', 'meditation'], recommendFor: [EnergyLevel.low]),
-    AudioTrack(id: 10, title: 'Tieng chim ban mai', artist: 'Nature Sounds', duration: '6:00', color: 0xFF7AB86D, emoji: '🐦', categories: ['nature'], recommendFor: [EnergyLevel.medium, EnergyLevel.high]),
+    AudioTrack(id: 1, title: 'Tiếng mưa tĩnh lặng', artist: 'Nature Sounds', duration: '5:30', color: 0xFF4A90C8, emoji: '🌧️', categories: ['nature', 'soft'], recommendFor: [EnergyLevel.low]),
+    AudioTrack(id: 2, title: 'Giai điệu thiền sâu', artist: 'Meditation FM', duration: '8:15', color: 0xFF5B8C4A, emoji: '🧘', categories: ['meditation'], recommendFor: [EnergyLevel.low, EnergyLevel.medium]),
+    AudioTrack(id: 3, title: 'Sóng biển ban mai', artist: 'Ocean Studio', duration: '6:45', color: 0xFFD4855A, emoji: '🌊', categories: ['nature', 'ambient'], recommendFor: [EnergyLevel.medium]),
+    AudioTrack(id: 4, title: 'Guitar nhẹ nhàng', artist: 'Acoustic Lab', duration: '4:20', color: 0xFF7AB86D, emoji: '🎸', categories: ['acoustic', 'soft'], recommendFor: [EnergyLevel.medium, EnergyLevel.high]),
+    AudioTrack(id: 5, title: 'Piano buổi sáng', artist: 'Keys & Soul', duration: '5:00', color: 0xFF8A7EC8, emoji: '🎹', categories: ['soft', 'acoustic'], recommendFor: [EnergyLevel.low, EnergyLevel.medium]),
+    AudioTrack(id: 6, title: 'Tiếng suối chảy', artist: 'Nature Sounds', duration: '7:10', color: 0xFF4A90C8, emoji: '🌿', categories: ['nature', 'ambient'], recommendFor: [EnergyLevel.low]),
+    AudioTrack(id: 7, title: 'Nhịp thở cân bằng', artist: 'Meditation FM', duration: '10:00', color: 0xFF5B8C4A, emoji: '💮', categories: ['meditation'], recommendFor: [EnergyLevel.low, EnergyLevel.medium]),
+    AudioTrack(id: 8, title: 'Ukulele vui tươi', artist: 'Acoustic Lab', duration: '3:45', color: 0xFFD4855A, emoji: '🎵', categories: ['acoustic'], recommendFor: [EnergyLevel.high]),
+    AudioTrack(id: 9, title: 'Không gian yên tĩnh', artist: 'Ambient World', duration: '12:00', color: 0xFF8A7EC8, emoji: '✨', categories: ['ambient', 'meditation'], recommendFor: [EnergyLevel.low]),
+    AudioTrack(id: 10, title: 'Tiếng chim ban mai', artist: 'Nature Sounds', duration: '6:00', color: 0xFF7AB86D, emoji: '🐦', categories: ['nature'], recommendFor: [EnergyLevel.medium, EnergyLevel.high]),
   ];
 
   static const audioCategories = [
-    ('all', 'Tat ca', '🎶'),
-    ('soft', 'Nhe nhang', '🌸'),
-    ('nature', 'Thien nhien', '🌿'),
-    ('meditation', 'Thien', '🧘'),
+    ('all', 'Tất cả', '🎶'),
+    ('soft', 'Nhẹ nhàng', '🌸'),
+    ('nature', 'Thiên nhiên', '🌿'),
+    ('meditation', 'Thiền', '🧘'),
     ('acoustic', 'Acoustic', '🎸'),
     ('ambient', 'Ambient', '🌌'),
   ];
 
   static const teamMembers = [
-    (id: 1, name: 'Thanh vien 1', score: 6, avatar: 'T1', streak: 5, isMe: false),
-    (id: 2, name: 'Thanh vien 2', score: 5, avatar: 'T2', streak: 3, isMe: false),
-    (id: 3, name: 'Ban', score: 4, avatar: 'BN', streak: 5, isMe: true),
-    (id: 4, name: 'Thanh vien 3', score: 3, avatar: 'T3', streak: 2, isMe: false),
+    (id: 1, name: 'Thành viên 1', score: 6, avatar: 'T1', streak: 5, isMe: false),
+    (id: 2, name: 'Thành viên 2', score: 5, avatar: 'T2', streak: 3, isMe: false),
+    (id: 3, name: 'Bạn', score: 4, avatar: 'BN', streak: 5, isMe: true),
+    (id: 4, name: 'Thành viên 3', score: 3, avatar: 'T3', streak: 2, isMe: false),
   ];
 
   static const existingGroups = [
-    (id: 'g1', name: 'Suc khoe moi ngay', members: 8, emoji: '🌿'),
-    (id: 'g2', name: 'Yoga & Thien', members: 5, emoji: '🧘'),
-    (id: 'g3', name: 'Chay bo Sai Gon', members: 12, emoji: '🏃'),
+    (id: 'g1', name: 'Sức khỏe mỗi ngày', members: 8, emoji: '🌿'),
+    (id: 'g2', name: 'Yoga & Thiền', members: 5, emoji: '🧘'),
+    (id: 'g3', name: 'Chạy bộ Sài Gòn', members: 12, emoji: '🏃'),
     (id: 'g4', name: 'Healthy Eating', members: 6, emoji: '🥗'),
     (id: 'g5', name: 'Early Birds', members: 4, emoji: '🌅'),
   ];
@@ -121,9 +121,9 @@ abstract final class MockData {
   static List<HabitRecord> generateMockHistory() {
     final records = <HabitRecord>[];
     final habits = [
-      [const HabitItem(id: 'h-d1-1', text: 'Tho sau 3 phut', done: true), const HabitItem(id: 'h-d1-2', text: 'Nham mat thu gian', done: true)],
-      [const HabitItem(id: 'h-d2-1', text: 'Gian co co tai ban', done: true), const HabitItem(id: 'h-d2-2', text: 'Di bo 5 phut')],
-      [const HabitItem(id: 'h-d3-1', text: 'Gian co toan than', done: true), const HabitItem(id: 'h-d3-2', text: 'Di bo 15 phut', done: true)],
+      [const HabitItem(id: 'h-d1-1', text: 'Thở sâu 3 phút', done: true), const HabitItem(id: 'h-d1-2', text: 'Nhắm mắt thư giãn', done: true)],
+      [const HabitItem(id: 'h-d2-1', text: 'Giãn cơ cổ tại bàn', done: true), const HabitItem(id: 'h-d2-2', text: 'Đi bộ 5 phút')],
+      [const HabitItem(id: 'h-d3-1', text: 'Giãn cơ toàn thân', done: true), const HabitItem(id: 'h-d3-2', text: 'Đi bộ 15 phút', done: true)],
     ];
     const energies = [EnergyLevel.low, EnergyLevel.medium, EnergyLevel.high];
     for (var i = 3; i >= 1; i--) {

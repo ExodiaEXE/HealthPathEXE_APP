@@ -16,7 +16,7 @@ class AppStateProvider extends ChangeNotifier {
   EnergyLevel? energyLevel;
   PaymentStep? paymentStep;
   PaymentMethodType? paymentMethod;
-  String userName = 'Nguoi dung';
+  String userName = 'Người dùng';
   String userEmail = 'user@healthpath.vn';
   UserProfile profile = const UserProfile();
   NotifSettings notifSettings = const NotifSettings();
@@ -29,7 +29,7 @@ class AppStateProvider extends ChangeNotifier {
   int? selectedMood;
   bool moodAutoPlay = false;
   bool hasTeam = false;
-  String teamName = 'Nhom Exodia';
+  String teamName = 'Nhóm Exodia';
   List<SavedPaymentMethod> savedPaymentMethods = [];
   PremiumInfo? premiumInfo;
   bool showSaveCredentials = false;
@@ -135,7 +135,7 @@ class AppStateProvider extends ChangeNotifier {
     paymentStep = null;
     paymentMethod = null;
     settingsView = SettingsView.main;
-    userName = 'Nguoi dung';
+    userName = 'Người dùng';
     userEmail = 'user@healthpath.vn';
     profile = const UserProfile();
     todayCheckedHabits.clear();
@@ -145,7 +145,7 @@ class AppStateProvider extends ChangeNotifier {
     selectedMood = null;
     moodAutoPlay = false;
     hasTeam = false;
-    teamName = 'Nhom Exodia';
+    teamName = 'Nhóm Exodia';
     savedPaymentMethods = [];
     premiumInfo = null;
     showSaveCredentials = false;

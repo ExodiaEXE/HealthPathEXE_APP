@@ -231,6 +231,100 @@ class AuthRepositoryImpl implements domain.AuthRepository {
     return fetchMe(token: token);
   }
 
+  @override
+  Future<AuthOperationResult?> fetchUserProfile() => fetchMe();
+
+  @override
+  Future<AuthOperationResult> updateUserProfile({
+    required String fullName,
+    String? phone,
+  }) async {
+    if (!_online) {
+      return AuthOperationResult(
+        success: true,
+        userName: fullName,
+        userPhone: phone,
+        message: 'Đã lưu thay đổi',
+      );
+    }
+    final token = await _storage.readAccessToken();
+    if (token == null || token.isEmpty || token.startsWith('mock_')) {
+      return AuthOperationResult.fail('Phiên đăng nhập không hợp lệ.');
+    }
+
+    final client = _api.withBearer(token);
+    try {
+      final res = await client.putJson('/api/Users/me', {
+        'fullName': fullName.trim(),
+        'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
+      });
+      if (!res.isOk) {
+        return AuthOperationResult.fail(
+          res.json['message'] as String? ?? 'Không lưu được hồ sơ.',
+        );
+      }
+      return _parseUserJson(res.json, token: token).copyWith(
+        success: true,
+        message: 'Đã lưu thay đổi',
+      );
+    } on ApiException catch (e) {
+      return AuthOperationResult.fail(e.message);
+    } finally {
+      client.close();
+    }
+  }
+
+  @override
+  Future<AuthOperationResult> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+    String? contentType,
+  }) async {
+    if (!_online) {
+      return const AuthOperationResult(
+        success: true,
+        avatarUrl: 'https://via.placeholder.com/128',
+        message: 'Đã cập nhật ảnh đại diện',
+      );
+    }
+    final token = await _storage.readAccessToken();
+    if (token == null || token.isEmpty || token.startsWith('mock_')) {
+      return AuthOperationResult.fail('Phiên đăng nhập không hợp lệ.');
+    }
+
+    final client = _api.withBearer(token);
+    try {
+      final res = await client.postMultipart(
+        '/api/File/avatar',
+        fieldName: 'file',
+        bytes: bytes,
+        filename: filename,
+        contentType: contentType,
+      );
+      if (!res.isOk) {
+        final msg = res.json['message'] as String? ??
+            (res.json['errors'] as List?)?.join(', ') ??
+            'Không tải được ảnh đại diện.';
+        return AuthOperationResult.fail(msg);
+      }
+      final data = res.json['data'] as Map<String, dynamic>?;
+      final url = _resolveMediaUrl(data?['url'] as String?);
+      if (url == null || url.isEmpty) {
+        return AuthOperationResult.fail('Máy chủ không trả về URL ảnh.');
+      }
+      return AuthOperationResult(
+        success: true,
+        token: token,
+        avatarUrl: url,
+        message: 'Đã cập nhật ảnh đại diện',
+      );
+    } on ApiException catch (e) {
+      return AuthOperationResult.fail(e.message);
+    } finally {
+      client.close();
+    }
+  }
+
   Future<AuthOperationResult?> fetchMe({String? token}) async {
     if (!_online) return null;
     final bearer = token ?? await _storage.readAccessToken();
@@ -240,18 +334,36 @@ class AuthRepositoryImpl implements domain.AuthRepository {
     try {
       final res = await client.getJson('/api/Users/me');
       if (!res.isOk) return null;
-      final json = res.json;
-      return AuthOperationResult(
-        success: true,
-        token: bearer,
-        userName: json['name'] as String?,
-        userEmail: json['email'] as String?,
-        isPremium: json['isPremium'] == true,
-      );
+      return _parseUserJson(res.json, token: bearer);
     } on ApiException {
       return null;
     } finally {
       client.close();
     }
+  }
+
+  AuthOperationResult _parseUserJson(
+    Map<String, dynamic> json, {
+    required String token,
+  }) {
+    return AuthOperationResult(
+      success: true,
+      token: token,
+      userName: json['name'] as String?,
+      userEmail: json['email'] as String?,
+      userPhone: json['phone'] as String?,
+      avatarUrl: _resolveMediaUrl(json['avatarUrl'] as String?),
+      isPremium: json['isPremium'] == true,
+      googleLinked: json['googleLinked'] == true,
+      facebookLinked: json['facebookLinked'] == true,
+    );
+  }
+
+  String? _resolveMediaUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    final base = EnvConfig.apiBaseUrl.replaceAll(RegExp(r'/+$'), '');
+    if (base.isEmpty) return url;
+    return url.startsWith('/') ? '$base$url' : '$base/$url';
   }
 }

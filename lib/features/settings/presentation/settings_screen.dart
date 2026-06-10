@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:health/core/constants/app_colors.dart';
+import 'package:health/core/utils/social_account_links.dart';
 import 'package:health/domain/usecases/auth/change_password_usecase.dart';
+import 'package:health/domain/usecases/auth/user_profile_usecases.dart';
+import 'package:health/domain/entities/subscription_entities.dart';
+import 'package:health/features/subscription/services/play_billing_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:health/features/settings/presentation/notification_views.dart';
 import 'package:health/shared/models/app_models.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
 import 'package:health/shared/widgets/app_snackbar.dart';
+import 'package:health/shared/widgets/google_brand_icon.dart';
 import 'package:health/shared/widgets/profile_text_field.dart';
 import 'package:provider/provider.dart';
 
@@ -37,6 +44,115 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+// ─────────────────── ACCOUNT CONTACT ───────────────────
+
+class _AccountContactRow extends StatelessWidget {
+  const _AccountContactRow({required this.app});
+
+  final AppStateProvider app;
+
+  Future<void> _openFacebookProfile(BuildContext context, Uri uri) async {
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted) return;
+    if (!ok) {
+      AppSnackBar.show(context, 'Không mở được trang Facebook');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = app.authProvider;
+
+    if (provider == AuthProviderType.facebook) {
+      final fbUri = SocialAccountLinks.facebookProfileUri(app.userEmail);
+      if (fbUri != null) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.facebook, size: 14, color: Color(0xFF1877F2)),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () => _openFacebookProfile(context, fbUri),
+              child: Text(
+                SocialAccountLinks.facebookLinkLabel(app.userEmail),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF1877F2),
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (provider == AuthProviderType.google)
+          const GoogleBrandIcon(size: 14)
+        else
+          const Icon(Icons.email_outlined, size: 14, color: Color(0xFF999999)),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            app.userEmail,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FacebookProfileLinkCard extends StatelessWidget {
+  const _FacebookProfileLinkCard({required this.email});
+
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    final uri = SocialAccountLinks.facebookProfileUri(email)!;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F8FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3ECFA)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.facebook, color: Color(0xFF1877F2), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tài khoản Facebook',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  SocialAccountLinks.facebookLinkLabel(email),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF666666)),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication),
+            child: const Text('Mở'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─────────────────── MAIN SETTINGS ───────────────────
 
 class _MainSettings extends StatefulWidget {
@@ -47,6 +163,44 @@ class _MainSettings extends StatefulWidget {
 }
 
 class _MainSettingsState extends State<_MainSettings> {
+  bool _avatarUploading = false;
+
+  Future<void> _pickAndUploadAvatar() async {
+    if (_avatarUploading) return;
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => _avatarUploading = true);
+    final app = context.read<AppStateProvider>();
+    final upload = context.read<UploadAvatarUseCase>();
+    try {
+      final bytes = await picked.readAsBytes();
+      final result = await upload(
+        bytes: bytes,
+        filename: picked.name,
+        contentType: picked.mimeType,
+      );
+      if (!mounted) return;
+      if (result.success && result.avatarUrl != null) {
+        app.setAvatarUrl(result.avatarUrl);
+        AppSnackBar.show(context, result.message ?? 'Đã cập nhật ảnh đại diện');
+      } else {
+        AppSnackBar.show(
+          context,
+          result.message ?? 'Không tải được ảnh đại diện',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _avatarUploading = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +216,7 @@ class _MainSettingsState extends State<_MainSettings> {
     final menuItems = [
       (icon: Icons.edit_outlined, label: 'Chỉnh sửa hồ sơ', color: const Color(0xFF3D7A2E), view: SettingsView.editProfile, enabled: true),
       (icon: Icons.lock_outline, label: 'Đổi mật khẩu', color: const Color(0xFF4A90C8), view: SettingsView.changePassword, enabled: !app.isSocialAuth),
-      (icon: Icons.account_balance_wallet_outlined, label: 'Ví & Thanh toán', color: const Color(0xFFD63384), view: SettingsView.wallet, enabled: true),
+      (icon: Icons.workspace_premium_outlined, label: 'Gói đăng ký', color: const Color(0xFFD63384), view: SettingsView.wallet, enabled: true),
       (icon: Icons.notifications_outlined, label: 'Thông báo', color: const Color(0xFFE8A87C), view: SettingsView.notifications, enabled: true),
       (icon: Icons.history, label: 'Lịch sử thói quen', color: const Color(0xFF4A90C8), view: SettingsView.history, enabled: true),
     ];
@@ -84,7 +238,7 @@ class _MainSettingsState extends State<_MainSettings> {
             children: [
               // Avatar
               GestureDetector(
-                onTap: () {},
+                onTap: _avatarUploading ? null : _pickAndUploadAvatar,
                 child: Stack(
                   children: [
                     Container(
@@ -96,9 +250,27 @@ class _MainSettingsState extends State<_MainSettings> {
                           colors: [AppColors.primary, AppColors.accent],
                         ),
                       ),
-                      child: app.avatarUrl != null
-                          ? ClipOval(child: Image.network(app.avatarUrl!, fit: BoxFit.cover, width: 64, height: 64))
-                          : const Icon(Icons.person, size: 32, color: Colors.white),
+                      child: _avatarUploading
+                          ? const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : app.avatarUrl != null
+                              ? ClipOval(
+                                  child: Image.network(
+                                    app.avatarUrl!,
+                                    fit: BoxFit.cover,
+                                    width: 64,
+                                    height: 64,
+                                  ),
+                                )
+                              : const Icon(Icons.person, size: 32, color: Colors.white),
                     ),
                     Positioned(
                       right: -2, bottom: -2,
@@ -120,19 +292,7 @@ class _MainSettingsState extends State<_MainSettings> {
               const SizedBox(height: 12),
               Text(app.userName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.foreground)),
               const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    app.authProvider == AuthProviderType.google ? Icons.g_mobiledata
-                        : app.authProvider == AuthProviderType.facebook ? Icons.facebook
-                        : Icons.email_outlined,
-                    size: 14, color: const Color(0xFF999999),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(app.userEmail, style: const TextStyle(fontSize: 12, color: Color(0xFF999999))),
-                ],
-              ),
+              _AccountContactRow(app: app),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -363,6 +523,7 @@ class _EditProfile extends StatefulWidget {
 class _EditProfileState extends State<_EditProfile>
     with AutomaticKeepAliveClientMixin {
   late final Map<String, TextEditingController> _controllers;
+  bool _saving = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -389,16 +550,45 @@ class _EditProfileState extends State<_EditProfile>
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_saving) return;
+    final lastName = _controllers['lastName']!.text.trim();
+    final firstName = _controllers['firstName']!.text.trim();
+    if (lastName.isEmpty || firstName.isEmpty) {
+      AppSnackBar.show(context, 'Vui lòng nhập họ và tên');
+      return;
+    }
+
+    setState(() => _saving = true);
     final app = context.read<AppStateProvider>();
-    app.setProfile(UserProfile(
-      lastName: _controllers['lastName']!.text.trim(),
-      firstName: _controllers['firstName']!.text.trim(),
-      email: app.userEmail,
-      phone: _controllers['phone']!.text.trim(),
-      dob: _controllers['dob']!.text.trim(),
-    ));
-    AppSnackBar.show(context, 'Đã lưu thay đổi');
+    final update = context.read<UpdateUserProfileUseCase>();
+    final fullName = '$lastName $firstName'.trim();
+    final phone = _controllers['phone']!.text.trim();
+
+    try {
+      final result = await update(fullName: fullName, phone: phone);
+      if (!mounted) return;
+      if (!result.success) {
+        AppSnackBar.show(
+          context,
+          result.message ?? 'Không lưu được hồ sơ',
+        );
+        return;
+      }
+      app.setProfile(UserProfile(
+        lastName: lastName,
+        firstName: firstName,
+        email: app.userEmail,
+        phone: phone,
+        dob: _controllers['dob']!.text.trim(),
+      ));
+      if (result.avatarUrl != null) {
+        app.setAvatarUrl(result.avatarUrl);
+      }
+      AppSnackBar.show(context, result.message ?? 'Đã lưu thay đổi');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -427,16 +617,20 @@ class _EditProfileState extends State<_EditProfile>
           helper: 'Tên hiển thị — không phải username đăng nhập',
         ),
         const SizedBox(height: 12),
-        ProfileTextField(
-          key: const ValueKey('profile-email'),
-          controller: _controllers['email']!,
-          label: 'Thư điện tử',
-          icon: Icons.email_outlined,
-          placeholder: 'nguoi.dung@email.com',
-          helper: 'Email tài khoản — không đổi tại đây',
-          readOnly: true,
-          keyboardType: TextInputType.emailAddress,
-        ),
+        if (app.authProvider == AuthProviderType.facebook &&
+            SocialAccountLinks.facebookProfileUri(app.userEmail) != null)
+          _FacebookProfileLinkCard(email: app.userEmail)
+        else
+          ProfileTextField(
+            key: const ValueKey('profile-email'),
+            controller: _controllers['email']!,
+            label: 'Thư điện tử',
+            icon: Icons.email_outlined,
+            placeholder: 'nguoi.dung@email.com',
+            helper: 'Email tài khoản — không đổi tại đây',
+            readOnly: true,
+            keyboardType: TextInputType.emailAddress,
+          ),
         const SizedBox(height: 12),
         ProfileTextField(
           key: const ValueKey('profile-phone'),
@@ -455,7 +649,10 @@ class _EditProfileState extends State<_EditProfile>
           placeholder: '01/01/1990',
         ),
         const SizedBox(height: 20),
-        _greenButton('Lưu thay đổi', _save),
+        _greenButton(
+          _saving ? 'Đang lưu...' : 'Lưu thay đổi',
+          _saving ? () {} : _save,
+        ),
       ],
     );
   }
@@ -577,13 +774,9 @@ class _ChangePasswordState extends State<_ChangePassword> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  app.authProvider == AuthProviderType.google
-                      ? Icons.g_mobiledata
-                      : Icons.facebook,
-                  size: 18,
-                  color: const Color(0xFF999999),
-                ),
+                app.authProvider == AuthProviderType.google
+                    ? const GoogleBrandIcon(size: 18)
+                    : const Icon(Icons.facebook, size: 18, color: Color(0xFF1877F2)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -846,7 +1039,7 @@ class _History extends StatelessWidget {
   }
 }
 
-// ─────────────────── WALLET ───────────────────
+// ─────────────────── SUBSCRIPTION / WALLET ───────────────────
 
 class _Wallet extends StatefulWidget {
   const _Wallet({super.key});
@@ -856,44 +1049,41 @@ class _Wallet extends StatefulWidget {
 }
 
 class _WalletState extends State<_Wallet> {
-  String? _addingType;
-  String? _confirmDelete;
-
-  final _momoPhone = TextEditingController();
-  final _momoName = TextEditingController();
-  bool _momoOtpStep = false;
-  final _momoOtp = TextEditingController();
-  bool _momoLoading = false;
-
-  final _bankAcc = TextEditingController();
-  final _bankName = TextEditingController();
-  final _bankHolder = TextEditingController();
-
-  final _visaCard = TextEditingController();
-  final _visaHolder = TextEditingController();
-  final _visaExpiry = TextEditingController();
-  final _visaCvv = TextEditingController();
-
-  static const _meta = {
-    'momo': (label: 'Ví MoMo', color: Color(0xFFD63384), icon: '📱'),
-    'bank': (label: 'Ngân hàng / Napas', color: Color(0xFF4A90C8), icon: '🏦'),
-    'visa': (label: 'Thẻ Visa / Mastercard', color: Color(0xFF1A1F71), icon: '💳'),
-  };
+  bool _loading = true;
 
   @override
-  void dispose() {
-    _momoPhone.dispose(); _momoName.dispose(); _momoOtp.dispose();
-    _bankAcc.dispose(); _bankName.dispose(); _bankHolder.dispose();
-    _visaCard.dispose(); _visaHolder.dispose(); _visaExpiry.dispose(); _visaCvv.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
-  void _resetForm() {
-    _addingType = null;
-    _momoPhone.clear(); _momoName.clear(); _momoOtpStep = false; _momoOtp.clear(); _momoLoading = false;
-    _bankAcc.clear(); _bankName.clear(); _bankHolder.clear();
-    _visaCard.clear(); _visaHolder.clear(); _visaExpiry.clear(); _visaCvv.clear();
-    setState(() {});
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final app = context.read<AppStateProvider>();
+    await app.syncSubscriptionFromServer();
+    await app.loadSubscriptionTransactions();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _restore() async {
+    await context.read<PlayBillingService>().restorePurchases();
+    await Future<void>.delayed(const Duration(seconds: 2));
+    await _refresh();
+    if (!mounted) return;
+    final app = context.read<AppStateProvider>();
+    AppSnackBar.show(
+      context,
+      app.isPremium ? 'Đã khôi phục gói đăng ký.' : 'Không tìm thấy gói trên tài khoản Google.',
+    );
+  }
+
+  Future<void> _openManageSubscriptions() async {
+    final uri = Uri.parse(
+      'https://play.google.com/store/account/subscriptions?package=com.example.health',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -902,58 +1092,111 @@ class _WalletState extends State<_Wallet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
       children: [
-        _buildBackHeader('Ví & Thanh toán', () => app.setSettingsView(SettingsView.main)),
+        _buildBackHeader('Gói đăng ký', () => app.setSettingsView(SettingsView.main)),
         const SizedBox(height: 16),
-
-        // Products section
-        const Text('SẢN PHẨM ĐÃ MUA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.mutedForeground, letterSpacing: 1)),
-        const SizedBox(height: 10),
-        if (app.isPremium && app.premiumInfo != null) _premiumCard(app.premiumInfo!)
-        else Container(
-          padding: const EdgeInsets.symmetric(vertical: 32),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border, width: 2, strokeAlign: BorderSide.strokeAlignInside),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else ...[
+          const Text(
+            'GÓI HIỆN TẠI',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.mutedForeground,
+              letterSpacing: 1,
+            ),
           ),
-          child: const Column(
-            children: [
-              Icon(Icons.inventory_2_outlined, size: 32, color: Color(0xFFD4D4D4)),
-              SizedBox(height: 8),
-              Text('Chưa có sản phẩm nào', style: TextStyle(fontSize: 12, color: Color(0xFF999999))),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Payment methods section
-        const Text('TÀI KHOẢN THANH TOÁN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.mutedForeground, letterSpacing: 1)),
-        const SizedBox(height: 10),
-        ...app.savedPaymentMethods.map((pm) => _savedMethodCard(pm, app)),
-        if (_addingType != null) _addForm(app),
-        if (_addingType == null) ...['momo', 'bank', 'visa'].map((t) {
-          final m = _meta[t]!;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: GestureDetector(
-              onTap: () => setState(() => _addingType = t),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD4D4D4), style: BorderStyle.solid),
-                  color: const Color(0xFFFAFAFA),
-                ),
-                child: Row(children: [
-                  Text(m.icon, style: const TextStyle(fontSize: 16)),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text('Thêm ${m.label}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.mutedForeground))),
-                  const Icon(Icons.add, size: 14, color: Color(0xFFBBBBBB)),
-                ]),
+          const SizedBox(height: 10),
+          if (app.isPremium && app.premiumInfo != null)
+            _premiumCard(app.premiumInfo!)
+          else
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.workspace_premium_outlined, size: 32, color: Color(0xFFD4D4D4)),
+                  const SizedBox(height: 8),
+                  const Text('Bạn đang dùng gói Miễn phí', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  _greenButton('Nâng cấp Cao cấp', () => app.setPaymentStep(PaymentStep.plan)),
+                ],
               ),
             ),
-          );
-        }),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _restore,
+                  child: const Text('Khôi phục gói', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _openManageSubscriptions,
+                  child: const Text('Quản lý trên Play', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
+          ),
+          if (app.subscriptionTransactions.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text(
+              'LỊCH SỬ GIAO DỊCH',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.mutedForeground,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...app.subscriptionTransactions.map(_transactionTile),
+          ],
+        ],
       ],
+    );
+  }
+
+  Widget _transactionTile(SubscriptionTransactionRecord tx) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.receipt_long, size: 18, color: AppColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tx.planName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(
+                  _fmtDt(tx.purchasedAt),
+                  style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            tx.status,
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary),
+          ),
+        ],
+      ),
     );
   }
 
@@ -999,7 +1242,8 @@ class _WalletState extends State<_Wallet> {
             ),
           ),
           const SizedBox(height: 12),
-          _infoRow('Hóa đơn', '${_formatAmount(info.amountVnd)} VND'),
+          if (info.amountVnd > 0)
+            _infoRow('Hóa đơn', '${_formatAmount(info.amountVnd)} VND'),
           _infoRow('Thanh toán qua', info.paidWith),
           _infoRow('Ngày thanh toán', _fmtDt(info.paidAt)),
           _infoRow('Hết hạn', _fmtDt(info.expiresAt), valueColor: const Color(0xFFE8A87C)),
@@ -1016,261 +1260,6 @@ class _WalletState extends State<_Wallet> {
         Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: valueColor ?? AppColors.foreground)),
       ]),
     );
-  }
-
-  Widget _savedMethodCard(SavedPaymentMethod pm, AppStateProvider app) {
-    final m = _meta[pm.type.name];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(children: [
-        Container(
-          width: 40, height: 40,
-          decoration: BoxDecoration(
-            color: (m?.color ?? AppColors.accent).withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Center(child: Text(m?.icon ?? '💳', style: const TextStyle(fontSize: 18))),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(m?.label ?? pm.label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.foreground)),
-            Text('${pm.maskedInfo}${pm.detail != null ? ' - ${pm.detail}' : ''}', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-          ],
-        )),
-        if (_confirmDelete == pm.id)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            GestureDetector(
-              onTap: () { app.removeSavedPaymentMethod(pm.id); setState(() => _confirmDelete = null); },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: const Color(0xFFE57373), borderRadius: BorderRadius.circular(8)),
-                child: const Text('Xóa', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-              ),
-            ),
-            const SizedBox(width: 6),
-            GestureDetector(
-              onTap: () => setState(() => _confirmDelete = null),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(8)),
-                child: const Text('Hủy', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF666666))),
-              ),
-            ),
-          ])
-        else
-          GestureDetector(
-            onTap: () => setState(() => _confirmDelete = pm.id),
-            child: Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.delete_outline, size: 14, color: Color(0xFF999999)),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  Widget _addForm(AppStateProvider app) {
-    if (_addingType == 'momo') return _momoForm(app);
-    if (_addingType == 'bank') return _bankForm(app);
-    if (_addingType == 'visa') return _visaForm(app);
-    return const SizedBox.shrink();
-  }
-
-  Widget _momoForm(AppStateProvider app) {
-    return Container(
-      margin: const EdgeInsets.only(top: 12, bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFD63384).withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFD63384).withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(children: [Text('📱 ', style: TextStyle(fontSize: 18)), Text('Liên kết Ví MoMo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))]),
-          const SizedBox(height: 12),
-          if (!_momoOtpStep) ...[
-            _formInput(_momoPhone, 'Số điện thoại (VD: 0912345678)', focusColor: const Color(0xFFD63384)),
-            const SizedBox(height: 8),
-            _formInput(_momoName, 'Tên chủ tài khoản MoMo', focusColor: const Color(0xFFD63384)),
-            const SizedBox(height: 12),
-            _formButtons(
-              primary: 'Gửi mã OTP', primaryColor: const Color(0xFFD63384),
-              onPrimary: _momoPhone.text.trim().isEmpty || _momoName.text.trim().isEmpty || _momoLoading ? null : () {
-                setState(() => _momoLoading = true);
-                Future.delayed(const Duration(milliseconds: 1200), () {
-                  if (mounted) setState(() { _momoLoading = false; _momoOtpStep = true; });
-                });
-              },
-              onCancel: _resetForm,
-            ),
-          ] else ...[
-            Text('Mã OTP đã được gửi đến ${_momoPhone.text}', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-            const SizedBox(height: 8),
-            _formInput(_momoOtp, 'Nhập mã OTP (6 số)', focusColor: const Color(0xFFD63384), center: true),
-            const SizedBox(height: 12),
-            _formButtons(
-              primary: 'Xác nhận liên kết', primaryColor: const Color(0xFFD63384),
-              onPrimary: _momoOtp.text.length < 4 ? null : () {
-                final masked = _momoPhone.text.length > 4
-                    ? '${_momoPhone.text.substring(0, 3)}***${_momoPhone.text.substring(_momoPhone.text.length - 3)}'
-                    : _momoPhone.text;
-                app.addSavedPaymentMethod(SavedPaymentMethod(
-                  id: 'pm-${DateTime.now().millisecondsSinceEpoch}',
-                  type: PaymentMethodType.momo, label: 'Ví MoMo',
-                  maskedInfo: masked, detail: _momoName.text,
-                ));
-                _resetForm();
-              },
-              onCancel: _resetForm,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _bankForm(AppStateProvider app) {
-    return Container(
-      margin: const EdgeInsets.only(top: 12, bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF4A90C8).withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF4A90C8).withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(children: [Text('🏦 ', style: TextStyle(fontSize: 18)), Text('Thêm tài khoản ngân hàng', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))]),
-          const SizedBox(height: 12),
-          _formInput(_bankAcc, 'Số tài khoản (VD: 1234567890)', focusColor: const Color(0xFF4A90C8)),
-          const SizedBox(height: 8),
-          _formInput(_bankName, 'Tên ngân hàng (VD: Vietcombank)', focusColor: const Color(0xFF4A90C8)),
-          const SizedBox(height: 8),
-          _formInput(_bankHolder, 'Tên chủ tài khoản', focusColor: const Color(0xFF4A90C8)),
-          const SizedBox(height: 12),
-          _formButtons(
-            primary: 'Lưu tài khoản', primaryColor: const Color(0xFF4A90C8),
-            onPrimary: _bankAcc.text.trim().isEmpty || _bankName.text.trim().isEmpty || _bankHolder.text.trim().isEmpty ? null : () {
-              final masked = _bankAcc.text.length > 4 ? '****${_bankAcc.text.substring(_bankAcc.text.length - 4)}' : _bankAcc.text;
-              app.addSavedPaymentMethod(SavedPaymentMethod(
-                id: 'pm-${DateTime.now().millisecondsSinceEpoch}',
-                type: PaymentMethodType.bank, label: 'Ngân hàng / Napas',
-                maskedInfo: masked, detail: '${_bankName.text} - ${_bankHolder.text}',
-              ));
-              _resetForm();
-            },
-            onCancel: _resetForm,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _visaForm(AppStateProvider app) {
-    return Container(
-      margin: const EdgeInsets.only(top: 12, bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1F71).withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1A1F71).withValues(alpha: 0.15)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(children: [Text('💳 ', style: TextStyle(fontSize: 18)), Text('Thêm thẻ Visa / Mastercard', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))]),
-          const SizedBox(height: 12),
-          _formInput(_visaCard, 'Số thẻ (16 số)', focusColor: const Color(0xFF1A1F71)),
-          const SizedBox(height: 8),
-          _formInput(_visaHolder, 'Tên chủ thẻ (in trên thẻ)', focusColor: const Color(0xFF1A1F71)),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: _formInput(_visaExpiry, 'MM/YY', focusColor: const Color(0xFF1A1F71))),
-            const SizedBox(width: 8),
-            SizedBox(width: 96, child: _formInput(_visaCvv, 'CVV', focusColor: const Color(0xFF1A1F71), obscure: true)),
-          ]),
-          const SizedBox(height: 12),
-          _formButtons(
-            primary: 'Lưu thẻ', primaryColor: const Color(0xFF1A1F71),
-            onPrimary: _visaCard.text.trim().isEmpty || _visaHolder.text.trim().isEmpty || _visaExpiry.text.trim().isEmpty || _visaCvv.text.trim().isEmpty ? null : () {
-              final masked = _visaCard.text.length > 4 ? '****${_visaCard.text.substring(_visaCard.text.length - 4)}' : _visaCard.text;
-              app.addSavedPaymentMethod(SavedPaymentMethod(
-                id: 'pm-${DateTime.now().millisecondsSinceEpoch}',
-                type: PaymentMethodType.visa, label: 'Visa / Mastercard',
-                maskedInfo: masked, detail: _visaHolder.text,
-              ));
-              _resetForm();
-            },
-            onCancel: _resetForm,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _formInput(TextEditingController ctrl, String hint, {Color focusColor = AppColors.primary, bool center = false, bool obscure = false}) {
-    return TextField(
-      controller: ctrl,
-      obscureText: obscure,
-      textAlign: center ? TextAlign.center : TextAlign.start,
-      onChanged: (v) => setState(() {}),
-      style: const TextStyle(fontSize: 14, color: AppColors.foreground),
-      decoration: InputDecoration(
-        hintText: hint, hintStyle: const TextStyle(color: Color(0xFFBBBBBB)),
-        filled: true, fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: focusColor, width: 2)),
-      ),
-    );
-  }
-
-  Widget _formButtons({required String primary, required Color primaryColor, VoidCallback? onPrimary, required VoidCallback onCancel}) {
-    return Row(children: [
-      Expanded(
-        child: GestureDetector(
-          onTap: onPrimary,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: onPrimary != null ? primaryColor : primaryColor.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.check, size: 14, color: Colors.white),
-              const SizedBox(width: 6),
-              Text(primary, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-            ]),
-          ),
-        ),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: GestureDetector(
-          onTap: onCancel,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: const Center(child: Text('Hủy', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF666666)))),
-          ),
-        ),
-      ),
-    ]);
   }
 
   String _formatAmount(int amount) {

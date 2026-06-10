@@ -17,6 +17,7 @@ import 'package:health/data/repositories/companion_repository_impl.dart';
 import 'package:health/data/repositories/mood_checkin_repository_impl.dart';
 import 'package:health/data/repositories/notification_repository_impl.dart';
 import 'package:health/data/repositories/routine_repository_impl.dart';
+import 'package:health/data/repositories/subscription_repository_impl.dart';
 import 'package:health/data/repositories/user_routine_repository_impl.dart';
 import 'package:health/data/repositories/wellness_repository_impl.dart';
 import 'package:health/domain/repositories/auth_repository.dart';
@@ -24,6 +25,7 @@ import 'package:health/domain/repositories/companion_repository.dart';
 import 'package:health/domain/usecases/companion/companion_usecases.dart';
 import 'package:health/domain/repositories/mood_checkin_repository.dart';
 import 'package:health/domain/repositories/routine_repository.dart';
+import 'package:health/domain/repositories/subscription_repository.dart';
 import 'package:health/domain/repositories/user_routine_repository.dart';
 import 'package:health/domain/repositories/wellness_repository.dart';
 import 'package:health/domain/usecases/auth/change_password_usecase.dart';
@@ -36,6 +38,7 @@ import 'package:health/domain/usecases/auth/reset_password_usecase.dart';
 import 'package:health/domain/usecases/auth/resend_verification_otp_usecase.dart';
 import 'package:health/domain/usecases/auth/restore_session_usecase.dart';
 import 'package:health/domain/usecases/auth/social_login_usecase.dart';
+import 'package:health/domain/usecases/auth/user_profile_usecases.dart';
 import 'package:health/domain/usecases/auth/verify_register_otp_usecase.dart';
 import 'package:health/domain/usecases/companion/companion_chat_usecase.dart';
 import 'package:health/domain/usecases/mood_checkin/fetch_mood_stats_usecase.dart';
@@ -43,10 +46,14 @@ import 'package:health/domain/usecases/mood_checkin/fetch_today_mood_checkin_use
 import 'package:health/domain/usecases/mood_checkin/sync_mood_checkin_usecase.dart';
 import 'package:health/domain/usecases/notification/notification_usecases.dart';
 import 'package:health/domain/usecases/routine/fetch_routines_usecase.dart';
+import 'package:health/domain/usecases/subscription/subscription_usecases.dart';
 import 'package:health/domain/usecases/user_routine/complete_today_routine_usecase.dart';
 import 'package:health/domain/usecases/user_routine/fetch_today_schedule_usecase.dart';
 import 'package:health/domain/usecases/user_routine/weekly_plan_usecases.dart';
 import 'package:health/domain/usecases/wellness/wellness_content_usecase.dart';
+import 'package:health/features/auth/data/social_auth_service.dart';
+import 'package:health/features/subscription/services/play_billing_service.dart';
+import 'package:health/features/subscription/services/subscription_billing_coordinator.dart';
 import 'package:health/features/companion/providers/companion_provider.dart';
 import 'package:health/features/notifications/services/notification_delivery_coordinator.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
@@ -70,7 +77,17 @@ class AppDependencies {
     required this.changePasswordUseCase,
     required this.resetPasswordUseCase,
     required this.restoreSessionUseCase,
+    required this.fetchUserProfileUseCase,
+    required this.updateUserProfileUseCase,
+    required this.uploadAvatarUseCase,
+    required this.subscriptionRepository,
+    required this.playBillingService,
+    required this.fetchSubscriptionPlansUseCase,
+    required this.fetchMySubscriptionUseCase,
+    required this.fetchMyTransactionsUseCase,
+    required this.verifySubscriptionPurchaseUseCase,
     required this.socialLoginUseCase,
+    required this.socialAuthService,
     required this.wellnessContentUseCase,
     required this.fetchRoutinesUseCase,
     required this.moodCheckinRepository,
@@ -129,7 +146,17 @@ class AppDependencies {
   final ChangePasswordUseCase changePasswordUseCase;
   final ResetPasswordUseCase resetPasswordUseCase;
   final RestoreSessionUseCase restoreSessionUseCase;
+  final FetchUserProfileUseCase fetchUserProfileUseCase;
+  final UpdateUserProfileUseCase updateUserProfileUseCase;
+  final UploadAvatarUseCase uploadAvatarUseCase;
+  final SubscriptionRepository subscriptionRepository;
+  final PlayBillingService playBillingService;
+  final FetchSubscriptionPlansUseCase fetchSubscriptionPlansUseCase;
+  final FetchMySubscriptionUseCase fetchMySubscriptionUseCase;
+  final FetchMyTransactionsUseCase fetchMyTransactionsUseCase;
+  final VerifySubscriptionPurchaseUseCase verifySubscriptionPurchaseUseCase;
   final SocialLoginUseCase socialLoginUseCase;
+  final SocialAuthService socialAuthService;
   final WellnessContentUseCase wellnessContentUseCase;
   final FetchRoutinesUseCase fetchRoutinesUseCase;
   final MoodCheckinRepository moodCheckinRepository;
@@ -178,6 +205,15 @@ class AppDependencies {
     final jwtAuth = JwtAuthService(storage);
     final apiClient = ApiClient();
     final authRepository = AuthRepositoryImpl(api: apiClient, storage: storage);
+    final subscriptionRepository =
+        SubscriptionRepositoryImpl(api: apiClient, storage: storage);
+    final playBillingService = PlayBillingService();
+    final verifySubscriptionPurchaseUseCase =
+        VerifySubscriptionPurchaseUseCase(subscriptionRepository);
+    SubscriptionBillingCoordinator.configure(
+      billing: playBillingService,
+      verifyPurchase: verifySubscriptionPurchaseUseCase,
+    );
     final wellnessRepository = WellnessRepositoryImpl();
     final routineRepository = RoutineRepositoryImpl(api: apiClient);
     final moodCheckinRepository = MoodCheckinRepositoryImpl(storage: storage);
@@ -197,6 +233,7 @@ class AppDependencies {
     final companionRepository =
         CompanionRepositoryImpl(api: apiClient, storage: storage);
     final companionChatRepository = CompanionChatRepositoryImpl();
+    final socialAuthService = createSocialAuthService();
     final fetchRecurringTemplatesUseCase =
         FetchRecurringTemplatesUseCase(userRoutineRepository);
     final syncWeeklyPlanUseCase =
@@ -228,7 +265,20 @@ class AppDependencies {
       changePasswordUseCase: ChangePasswordUseCase(authRepository),
       resetPasswordUseCase: ResetPasswordUseCase(authRepository),
       restoreSessionUseCase: RestoreSessionUseCase(authRepository),
+      fetchUserProfileUseCase: FetchUserProfileUseCase(authRepository),
+      updateUserProfileUseCase: UpdateUserProfileUseCase(authRepository),
+      uploadAvatarUseCase: UploadAvatarUseCase(authRepository),
+      subscriptionRepository: subscriptionRepository,
+      playBillingService: playBillingService,
+      fetchSubscriptionPlansUseCase:
+          FetchSubscriptionPlansUseCase(subscriptionRepository),
+      fetchMySubscriptionUseCase:
+          FetchMySubscriptionUseCase(subscriptionRepository),
+      fetchMyTransactionsUseCase:
+          FetchMyTransactionsUseCase(subscriptionRepository),
+      verifySubscriptionPurchaseUseCase: verifySubscriptionPurchaseUseCase,
       socialLoginUseCase: SocialLoginUseCase(authRepository),
+      socialAuthService: socialAuthService,
       wellnessContentUseCase: WellnessContentUseCase(wellnessRepository),
       fetchRoutinesUseCase: FetchRoutinesUseCase(routineRepository),
       moodCheckinRepository: moodCheckinRepository,
@@ -290,6 +340,16 @@ class AppDependencies {
         Provider<JwtAuthService>.value(value: jwtAuth),
         Provider<ApiClient>.value(value: apiClient),
         Provider<AuthRepository>.value(value: authRepository),
+        Provider<SubscriptionRepository>.value(value: subscriptionRepository),
+        Provider<PlayBillingService>.value(value: playBillingService),
+        Provider<FetchSubscriptionPlansUseCase>.value(
+            value: fetchSubscriptionPlansUseCase),
+        Provider<FetchMySubscriptionUseCase>.value(
+            value: fetchMySubscriptionUseCase),
+        Provider<FetchMyTransactionsUseCase>.value(
+            value: fetchMyTransactionsUseCase),
+        Provider<VerifySubscriptionPurchaseUseCase>.value(
+            value: verifySubscriptionPurchaseUseCase),
         Provider<WellnessRepository>.value(value: wellnessRepository),
         Provider<RoutineRepository>.value(value: routineRepository),
         Provider<LoginUseCase>.value(value: loginUseCase),
@@ -300,7 +360,11 @@ class AppDependencies {
         Provider<ChangePasswordUseCase>.value(value: changePasswordUseCase),
         Provider<ResetPasswordUseCase>.value(value: resetPasswordUseCase),
         Provider<RestoreSessionUseCase>.value(value: restoreSessionUseCase),
+        Provider<FetchUserProfileUseCase>.value(value: fetchUserProfileUseCase),
+        Provider<UpdateUserProfileUseCase>.value(value: updateUserProfileUseCase),
+        Provider<UploadAvatarUseCase>.value(value: uploadAvatarUseCase),
         Provider<SocialLoginUseCase>.value(value: socialLoginUseCase),
+        Provider<SocialAuthService>.value(value: socialAuthService),
         Provider<WellnessContentUseCase>.value(value: wellnessContentUseCase),
         Provider<FetchRoutinesUseCase>.value(value: fetchRoutinesUseCase),
         Provider<MoodCheckinRepository>.value(value: moodCheckinRepository),
@@ -348,6 +412,9 @@ class AppDependencies {
           create: (ctx) => AppStateProvider(
             jwtAuth: jwtAuth,
             restoreSession: restoreSessionUseCase,
+            fetchUserProfile: fetchUserProfileUseCase,
+            fetchMySubscription: fetchMySubscriptionUseCase,
+            fetchMyTransactions: fetchMyTransactionsUseCase,
             wellness: wellnessContentUseCase,
             fetchRoutines: fetchRoutinesUseCase,
             syncMoodCheckin: syncMoodCheckinUseCase,

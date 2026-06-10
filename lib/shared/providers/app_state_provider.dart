@@ -13,7 +13,11 @@ import 'package:health/core/utils/weekly_planner_utils.dart';
 import 'package:health/core/security/jwt_auth_service.dart';
 import 'package:health/domain/entities/routine_entities.dart';
 import 'package:health/domain/entities/weekly_plan_sync_result.dart';
+import 'package:health/domain/entities/auth_entities.dart';
 import 'package:health/domain/usecases/auth/restore_session_usecase.dart';
+import 'package:health/domain/entities/subscription_entities.dart';
+import 'package:health/domain/usecases/auth/user_profile_usecases.dart';
+import 'package:health/domain/usecases/subscription/subscription_usecases.dart';
 import 'package:health/domain/usecases/mood_checkin/fetch_mood_stats_usecase.dart';
 import 'package:health/domain/usecases/mood_checkin/fetch_today_mood_checkin_usecase.dart';
 import 'package:health/domain/usecases/mood_checkin/sync_mood_checkin_usecase.dart';
@@ -38,6 +42,9 @@ class AppStateProvider extends ChangeNotifier {
   AppStateProvider({
     required JwtAuthService jwtAuth,
     required RestoreSessionUseCase restoreSession,
+    FetchUserProfileUseCase? fetchUserProfile,
+    FetchMySubscriptionUseCase? fetchMySubscription,
+    FetchMyTransactionsUseCase? fetchMyTransactions,
     required WellnessContentUseCase wellness,
     required FetchRoutinesUseCase fetchRoutines,
     required SyncMoodCheckinUseCase syncMoodCheckin,
@@ -77,6 +84,9 @@ class AppStateProvider extends ChangeNotifier {
     DeleteNotificationUseCase? deleteNotification,
   })  : _jwtAuth = jwtAuth,
         _restoreSession = restoreSession,
+        _fetchUserProfile = fetchUserProfile,
+        _fetchMySubscription = fetchMySubscription,
+        _fetchMyTransactions = fetchMyTransactions,
         _wellness = wellness,
         _fetchRoutines = fetchRoutines,
         _syncMoodCheckin = syncMoodCheckin,
@@ -122,6 +132,9 @@ class AppStateProvider extends ChangeNotifier {
 
   final JwtAuthService _jwtAuth;
   final RestoreSessionUseCase _restoreSession;
+  final FetchUserProfileUseCase? _fetchUserProfile;
+  final FetchMySubscriptionUseCase? _fetchMySubscription;
+  final FetchMyTransactionsUseCase? _fetchMyTransactions;
   final WellnessContentUseCase _wellness;
   final FetchRoutinesUseCase _fetchRoutines;
   final SyncMoodCheckinUseCase _syncMoodCheckin;
@@ -174,7 +187,6 @@ class AppStateProvider extends ChangeNotifier {
   ActiveTab? previousTab;
   EnergyLevel? energyLevel;
   PaymentStep? paymentStep;
-  PaymentMethodType? paymentMethod;
   String userName = 'Người dùng';
   String userEmail = 'user@healthpath.vn';
   /// Tên tài khoản từ login/API — dùng khi chưa điền đủ họ + tên hồ sơ.
@@ -215,8 +227,9 @@ class AppStateProvider extends ChangeNotifier {
   String? audioError;
   bool get hasTeam => teamGroupId != null && teamGroupId!.isNotEmpty;
   bool get hasAnyTeam => myTeams.isNotEmpty;
-  List<SavedPaymentMethod> savedPaymentMethods = [];
   PremiumInfo? premiumInfo;
+  UserSubscriptionRecord? activeSubscription;
+  List<SubscriptionTransactionRecord> subscriptionTransactions = [];
   bool showSaveCredentials = false;
   ({String email, String password})? savedCredentials;
 
@@ -772,18 +785,6 @@ class AppStateProvider extends ChangeNotifier {
     unawaited(_persistHabitHistory());
   }
 
-  void addSavedPaymentMethod(SavedPaymentMethod method) {
-    savedPaymentMethods =
-        [...savedPaymentMethods.where((p) => p.id != method.id), method];
-    notifyListeners();
-  }
-
-  void removeSavedPaymentMethod(String id) {
-    savedPaymentMethods =
-        savedPaymentMethods.where((p) => p.id != id).toList();
-    notifyListeners();
-  }
-
   Future<void> completeAuth({
     required String email,
     String? name,
@@ -815,6 +816,9 @@ class AppStateProvider extends ChangeNotifier {
 
     authState = AuthState.authenticated;
     notifyListeners();
+
+    await syncProfileFromServer();
+    await syncSubscriptionFromServer();
 
     await loadRoutineCatalog();
     await loadMoodStats();
@@ -1505,7 +1509,6 @@ class AppStateProvider extends ChangeNotifier {
     previousTab = null;
     energyLevel = null;
     paymentStep = null;
-    paymentMethod = null;
     settingsView = SettingsView.main;
     userName = 'Người dùng';
     userEmail = 'user@healthpath.vn';
@@ -1521,8 +1524,9 @@ class AppStateProvider extends ChangeNotifier {
     selectedMood = null;
     unawaited(_groupLocalStore.clearActiveGroupId(userEmail));
     _clearTeamState();
-    savedPaymentMethods = [];
     premiumInfo = null;
+    activeSubscription = null;
+    subscriptionTransactions = [];
     showSaveCredentials = false;
     savedCredentials = null;
     routines = [];
@@ -1570,11 +1574,6 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setPaymentMethod(PaymentMethodType? m) {
-    paymentMethod = m;
-    notifyListeners();
-  }
-
   void setSettingsView(SettingsView v) {
     settingsView = v;
     if (v == SettingsView.history) {
@@ -1603,11 +1602,6 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setIsPremium(bool v) {
-    isPremium = v;
-    notifyListeners();
-  }
-
   void setPremiumInfo(PremiumInfo? info) {
     premiumInfo = info;
     notifyListeners();
@@ -1618,6 +1612,119 @@ class AppStateProvider extends ChangeNotifier {
     _refreshDisplayUserName();
     notifyListeners();
     unawaited(_userProfileStore.save(userEmail, profile));
+  }
+
+  void setAvatarUrl(String? url) {
+    avatarUrl = url;
+    notifyListeners();
+  }
+
+  Future<void> syncProfileFromServer() async {
+    final fetch = _fetchUserProfile;
+    if (fetch == null) return;
+    try {
+      final remote = await fetch();
+      if (remote == null || !remote.success) return;
+      applyRemoteProfile(remote);
+    } catch (e) {
+      if (kDebugMode) debugPrint('syncProfileFromServer: $e');
+    }
+  }
+
+  void applyRemoteProfile(AuthOperationResult remote) {
+    if (remote.userEmail != null && remote.userEmail!.isNotEmpty) {
+      userEmail = remote.userEmail!;
+    }
+    if (remote.userName != null && remote.userName!.trim().isNotEmpty) {
+      _applyFullNameFromServer(remote.userName!.trim());
+      _applyAuthAccountName(remote.userName);
+    }
+    if (remote.userPhone != null) {
+      profile = profile.copyWith(phone: remote.userPhone!, email: userEmail);
+    }
+    if (remote.avatarUrl != null) {
+      avatarUrl = remote.avatarUrl;
+    }
+    isPremium = remote.isPremium;
+    _refreshDisplayUserName();
+    notifyListeners();
+    unawaited(_userProfileStore.save(userEmail, profile.copyWith(email: userEmail)));
+  }
+
+  Future<void> syncSubscriptionFromServer() async {
+    final fetch = _fetchMySubscription;
+    if (fetch == null) return;
+    try {
+      final remote = await fetch();
+      if (remote == null || !remote.success) return;
+      _applySubscription(remote.subscription);
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('syncSubscriptionFromServer: $e');
+    }
+  }
+
+  Future<void> loadSubscriptionTransactions() async {
+    final fetch = _fetchMyTransactions;
+    if (fetch == null) return;
+    try {
+      final result = await fetch();
+      if (result.success) {
+        subscriptionTransactions = result.transactions;
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('loadSubscriptionTransactions: $e');
+    }
+  }
+
+  Future<void> applySubscriptionFromServer(
+    SubscriptionOperationResult result,
+  ) async {
+    if (result.subscription != null) {
+      _applySubscription(result.subscription);
+    } else {
+      await syncSubscriptionFromServer();
+    }
+    notifyListeners();
+  }
+
+  void _applySubscription(UserSubscriptionRecord? sub) {
+    activeSubscription = sub;
+    isPremium = sub?.isActive == true;
+    if (sub != null && sub.isActive) {
+      premiumInfo = PremiumInfo(
+        productId: sub.billingCycle == 'yearly'
+            ? 'healthpath_premium_yearly'
+            : 'healthpath_premium_monthly',
+        productName: sub.planName,
+        benefits: const [
+          'Không quảng cáo',
+          'Toàn bộ audio thư giãn',
+          'Hỗ trợ ưu tiên',
+        ],
+        amountVnd: 0,
+        paidWith: sub.paymentProvider ?? 'Google Play',
+        paidAt: sub.startedAt,
+        expiresAt: sub.expiresAt ?? sub.startedAt.add(const Duration(days: 30)),
+      );
+    } else if (!isPremium) {
+      premiumInfo = null;
+    }
+  }
+
+  void _applyFullNameFromServer(String fullName) {
+    final parts = fullName.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return;
+    if (parts.length == 1) {
+      profile = profile.copyWith(firstName: parts[0], email: userEmail);
+      return;
+    }
+    profile = profile.copyWith(
+      lastName: parts.first,
+      firstName: parts.sublist(1).join(' '),
+      email: userEmail,
+    );
   }
 
   void setNotificationSettings(NotificationSettingsRecord settings) {

@@ -63,7 +63,7 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _successMessage;
   bool _verifyFromLogin = false;
 
-  SocialAuthService get _social => const MockSocialAuthService();
+  SocialAuthService get _social => context.read<SocialAuthService>();
 
   @override
   void dispose() {

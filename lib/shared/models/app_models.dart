@@ -6,9 +6,7 @@ enum ActiveTab { home, audio, companion, team, settings }
 
 enum EnergyLevel { low, medium, high }
 
-enum PaymentStep { plan, method, input, otp, processing, success }
-
-enum PaymentMethodType { momo, bank, visa }
+enum PaymentStep { plan, processing, success }
 
 enum SettingsView {
   main,
@@ -18,22 +16,6 @@ enum SettingsView {
   notificationInbox,
   history,
   wallet,
-}
-
-class SavedPaymentMethod {
-  const SavedPaymentMethod({
-    required this.id,
-    required this.type,
-    required this.label,
-    required this.maskedInfo,
-    this.detail,
-  });
-
-  final String id;
-  final PaymentMethodType type;
-  final String label;
-  final String maskedInfo;
-  final String? detail;
 }
 
 class PremiumInfo {

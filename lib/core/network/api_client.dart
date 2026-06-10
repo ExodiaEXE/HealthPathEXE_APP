@@ -98,6 +98,36 @@ class ApiClient {
     }
   }
 
+  Future<ApiResult> postMultipart(
+    String path, {
+    required String fieldName,
+    required List<int> bytes,
+    required String filename,
+    String? contentType,
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', _uri(path));
+      final bearer = _bearerToken;
+      if (bearer != null && bearer.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $bearer';
+      }
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fieldName,
+          bytes,
+          filename: filename,
+        ),
+      );
+      final streamed = await request.send().timeout(timeout);
+      final resp = await http.Response.fromStream(streamed);
+      return ApiResult(statusCode: resp.statusCode, json: _decode(resp.body));
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Không kết nối được máy chủ. Vui lòng thử lại sau.');
+    }
+  }
+
   Future<ApiResult> deleteJson(String path) async {
     try {
       final resp =

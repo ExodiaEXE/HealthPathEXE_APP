@@ -137,6 +137,7 @@ class AudioPlaybackService {
       return AudioSource.uri(uri);
     }
     // Cache file local trước khi phát — giảm rè / giật trên Ổn định & Cao.
+    // ignore: experimental_member_use — just_audio chưa có API cache ổn định thay thế.
     return LockCachingAudioSource(uri);
   }
 

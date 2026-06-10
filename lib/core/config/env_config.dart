@@ -61,6 +61,14 @@ class EnvConfig {
 
   static String get facebookAppId => _env('FACEBOOK_APP_ID');
 
+  static String get facebookClientToken => _env('FACEBOOK_CLIENT_TOKEN');
+
+  /// Web OAuth Client ID — bắt buộc để lấy id_token gửi backend.
+  static bool get hasGoogleSignIn => googleClientId.isNotEmpty;
+
+  /// Facebook App ID (native config ở strings.xml / Info.plist).
+  static bool get hasFacebookLogin => facebookAppId.isNotEmpty;
+
   /// `true` khi chưa cấu hình URL backend — chỉ dùng mock UI.
   static bool get useMockBackend => apiBaseUrl.isEmpty;
 

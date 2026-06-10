@@ -42,4 +42,17 @@ abstract class AuthRepository {
   });
 
   Future<AuthOperationResult?> restoreSession();
+
+  Future<AuthOperationResult?> fetchUserProfile();
+
+  Future<AuthOperationResult> updateUserProfile({
+    required String fullName,
+    String? phone,
+  });
+
+  Future<AuthOperationResult> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+    String? contentType,
+  });
 }

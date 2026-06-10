@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:health/core/constants/app_colors.dart';
 import 'package:health/core/theme/app_typography.dart';
-import 'package:health/shared/data/mock_data.dart';
 import 'package:health/shared/models/app_models.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
+import 'package:health/features/home/presentation/habits_all_sheet.dart';
+import 'package:health/features/home/presentation/routine_planner_sheet.dart';
+import 'package:health/features/home/presentation/routine_all_sheet.dart';
+import 'package:health/shared/widgets/app_snackbar.dart';
+import 'package:health/shared/widgets/habit_row_tile.dart';
 import 'package:health/shared/widgets/hp_tap_scale.dart';
+import 'package:health/shared/widgets/routine_suggestion_card.dart';
 import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,9 +20,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _moodMusicPlaying = false;
-  int _moodTrackIdx = 0;
-  bool _moodDismissed = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final app = context.read<AppStateProvider>();
+      if (app.homeDataLoading || app.routines.isNotEmpty || app.routinesLoading) {
+        return;
+      }
+      await app.loadRoutineCatalog();
+      await app.loadWeeklyPlanFromApiIfNeeded();
+      await app.loadTodayCompletedRoutines();
+    });
+  }
 
   static const _moodColors = [
     Color(0xFFD45A5A),
@@ -34,11 +49,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppStateProvider>();
+    if (app.homeDataLoading || (app.routines.isEmpty && app.routinesLoading)) {
+      return const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
+    final w = app.wellness;
     final habits = app.getActiveHabits();
+    final visibleHabits = habits.take(5).toList();
     final completed =
-        habits.where((h) => app.todayCheckedHabits.contains(h.id)).length;
-    final suggestions =
-        MockData.getRoutineSuggestions(app.energyLevel, app.selectedMood);
+        habits.where((h) => app.isHabitCompleted(h.id)).length;
     final today = DateTime.now();
     const dayNames = [
       'Chủ nhật',
@@ -49,6 +73,16 @@ class _HomeScreenState extends State<HomeScreen> {
       'Thứ Sáu',
       'Thứ Bảy'
     ];
+
+    if (app.habitCompleteError != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        final msg = app.habitCompleteError;
+        if (msg == null) return;
+        context.read<AppStateProvider>().clearHabitCompleteError();
+        AppSnackBar.show(context, msg);
+      });
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
@@ -83,18 +117,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Daily Check-in Card
         _buildCheckInCard(app),
-
-        // Mood Music Player
-        AnimatedSize(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-          child: app.selectedMood != null && !_moodDismissed
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: _buildMoodPlayer(app),
-                )
-              : const SizedBox.shrink(),
-        ),
         const SizedBox(height: 16),
 
         // Energy Selector
@@ -102,8 +124,8 @@ class _HomeScreenState extends State<HomeScreen> {
             style: AppTypography.section.copyWith(fontSize: 14)),
         const SizedBox(height: 8),
         Row(
-          children: List.generate(MockData.energyOptions.length, (i) {
-            final e = MockData.energyOptions[i];
+          children: List.generate(w.energyOptions.length, (i) {
+            final e = w.energyOptions[i];
             final active = app.energyLevel == e.level;
             final color = _energyColors[i];
             return Expanded(
@@ -114,7 +136,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: HpTapScale(
                   scale: 0.95,
-                  onTap: () => app.setEnergyLevel(e.level),
+                  onTap: app.dailyCheckinLocked && !active
+                      ? null
+                      : () => app.setEnergyLevel(e.level),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOut,
@@ -164,11 +188,15 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Routine của bạn',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: AppColors.foreground)),
+              const Flexible(
+                child: Text('Thói quen của bạn',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppColors.foreground)),
+              ),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -185,6 +213,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              if (habits.length > 5) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => HabitsAllSheet.show(context),
+                  child: Text(
+                    'Xem tất cả \u2192',
+                    style: AppTypography.link.copyWith(fontSize: 12),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -214,89 +252,19 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          ...List.generate(habits.length, (i) {
-            final h = habits[i];
-            final done = app.todayCheckedHabits.contains(h.id);
-            return TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: Duration(milliseconds: 300 + (i * 60)),
-              curve: Curves.easeOut,
-              builder: (context, value, child) => Opacity(
-                opacity: value,
-                child: Transform.translate(
-                  offset: Offset(0, 8 * (1 - value)),
-                  child: child,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: HpTapScale(
-                  scale: 0.98,
-                  onTap: () => app.toggleTodayHabit(h.id, h.text),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: done
-                            ? AppColors.primary.withValues(alpha: 0.3)
-                            : AppColors.border,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      color: done
-                          ? AppColors.primary.withValues(alpha: 0.04)
-                          : Colors.white,
-                    ),
-                    child: Row(
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: done
-                                ? AppColors.primary
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: done
-                                  ? AppColors.primary
-                                  : AppColors.border,
-                              width: 2,
-                            ),
-                          ),
-                          child: done
-                              ? const Icon(Icons.check,
-                                  color: Colors.white, size: 16)
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            h.text,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              decoration: done
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                              color: done
-                                  ? AppColors.primary
-                                  : AppColors.foreground,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+          ...List.generate(visibleHabits.length, (i) {
+            final h = visibleHabits[i];
+            return HabitRowTile(
+              key: ValueKey('habit-${h.id}'),
+              habitId: h.id,
+              label: h.text,
+              entranceIndex: i,
             );
           }),
         ],
 
         // Empty state
-        if (app.energyLevel == null && !app.hasCustomRoutines)
+        if (habits.isEmpty && !app.hasCustomRoutines)
           Container(
             margin: const EdgeInsets.symmetric(vertical: 16),
             padding: const EdgeInsets.all(24),
@@ -323,126 +291,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
         const SizedBox(height: 16),
 
-        // Routine Suggestions
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Routine hôm nay',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: AppColors.foreground)),
-            GestureDetector(
-              onTap: () {},
-              child: Text(
-                'Xem tất cả \u2192',
-                style: AppTypography.link.copyWith(fontSize: 11),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 150,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: suggestions.length,
-            separatorBuilder: (context, idx) => const SizedBox(width: 10),
-            itemBuilder: (context, i) {
-              final s = suggestions[i];
-              final emoji = MockData.suggestionEmojis[s.icon] ?? '💡';
-              final added = app.todayCheckedHabits.contains(s.id);
-              return Container(
-                width: 130,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.border),
-                  borderRadius: BorderRadius.circular(16),
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(emoji, style: const TextStyle(fontSize: 24)),
-                    const SizedBox(height: 6),
-                    Text(s.text,
-                        style: const TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w700),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text(s.note,
-                        style: const TextStyle(
-                            fontSize: 9, color: AppColors.muted),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                    const Spacer(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Text('Nhẹ',
-                                style: TextStyle(
-                                    fontSize: 9, color: AppColors.muted)),
-                          ],
-                        ),
-                        GestureDetector(
-                          onTap: () =>
-                              app.toggleTodayHabit(s.id, s.text),
-                          child: Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: added
-                                  ? AppColors.primary
-                                  : Colors.transparent,
-                              border: Border.all(
-                                color: added
-                                    ? AppColors.primary
-                                    : AppColors.border,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Icon(
-                              added ? Icons.check : Icons.add,
-                              size: 12,
-                              color:
-                                  added ? Colors.white : AppColors.muted,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
+        // Routine catalog (API)
+        _buildRoutineCatalogSection(context, app),
         const SizedBox(height: 16),
 
         // Setup routine button
         HpTapScale(
           scale: 0.98,
-          onTap: () {},
+          onTap: () => RoutinePlannerSheet.show(context),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -479,9 +335,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: AppColors.foreground,
                         ),
                       ),
-                      const Text(
-                        'Tùy chỉnh thói quen hàng ngày',
-                        style: TextStyle(
+                      Text(
+                        app.hasCustomRoutines
+                            ? 'Đang áp dụng routine cá nhân'
+                            : 'Tùy chỉnh thói quen hàng ngày',
+                        style: const TextStyle(
                             fontSize: 11, color: AppColors.muted),
                       ),
                     ],
@@ -496,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 16),
 
         // Weekly Chart
-        _buildWeeklyChart(),
+        _buildWeeklyChart(app),
         const SizedBox(height: 12),
 
         // Team challenge link
@@ -566,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Nâng cấp Premium',
+                        Text('Nâng cấp gói cao cấp',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 13)),
                         Text('Mở khóa tất cả tính năng nâng cao',
@@ -606,7 +464,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
-                  '✨ Daily Check-in',
+                  '✨ Điểm danh hàng ngày',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 10,
@@ -651,22 +509,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 12),
           Row(
-            children: List.generate(MockData.moods.length, (i) {
-              final m = MockData.moods[i];
+            children: List.generate(app.wellness.moods.length, (i) {
+              final m = app.wellness.moods[i];
               final active = app.selectedMood == i;
               return Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
                   child: HpTapScale(
                     scale: 0.93,
-                    onTap: () {
-                      app.setSelectedMood(i);
-                      setState(() {
-                        _moodTrackIdx = 0;
-                        _moodMusicPlaying = true;
-                        _moodDismissed = false;
-                      });
-                    },
+                    onTap: app.dailyCheckinLocked && !active
+                        ? null
+                        : () => app.setSelectedMood(i),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -714,153 +567,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMoodPlayer(AppStateProvider app) {
-    final mood = app.selectedMood!;
-    final tracks = MockData.moodTracks[mood]!;
-    final track = tracks[_moodTrackIdx.clamp(0, tracks.length - 1)];
-    final trackColor = Color(track.color);
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            trackColor.withValues(alpha: 0.08),
-            trackColor.withValues(alpha: 0.02),
-          ],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('🎵', style: TextStyle(fontSize: 12)),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  'Nhạc cho tâm trạng \'${MockData.moods[mood].label}\'',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: () => setState(() => _moodDismissed = true),
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.close, size: 14,
-                      color: AppColors.muted),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 90,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: tracks.length,
-              separatorBuilder: (context, idx) => const SizedBox(width: 10),
-              itemBuilder: (context, i) {
-                final t = tracks[i];
-                final tColor = Color(t.color);
-                final isCurrent = i == _moodTrackIdx;
-                return GestureDetector(
-                  onTap: () => setState(() {
-                    _moodTrackIdx = i;
-                    _moodMusicPlaying = true;
-                  }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 180,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isCurrent
-                            ? tColor.withValues(alpha: 0.4)
-                            : AppColors.border,
-                      ),
-                      color: isCurrent
-                          ? tColor.withValues(alpha: 0.08)
-                          : Colors.white,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(t.emoji,
-                            style: const TextStyle(fontSize: 20)),
-                        const SizedBox(height: 4),
-                        Text(t.title,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        Text(t.artist,
-                            style: const TextStyle(
-                                fontSize: 10, color: AppColors.muted),
-                            maxLines: 1),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () =>
-                    setState(() => _moodMusicPlaying = !_moodMusicPlaying),
-                child: Icon(
-                  _moodMusicPlaying
-                      ? Icons.pause_circle_filled_rounded
-                      : Icons.play_circle_filled_rounded,
-                  color: AppColors.primary,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => setState(
-                    () => _moodTrackIdx = (_moodTrackIdx + 1) % tracks.length),
-                child: const Icon(Icons.skip_next_rounded,
-                    color: AppColors.foreground, size: 24),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => app.navigateTo(ActiveTab.audio),
-                child: Text(
-                  'Mở thư viện',
-                  style: AppTypography.link.copyWith(fontSize: 11),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWeeklyChart() {
-    const data = [3, 2, 3, 2, 1, 0, 0];
-    const maxVal = 3;
-    final todayIdx = (DateTime.now().weekday - 1) % 7;
+  Widget _buildWeeklyChart(AppStateProvider app) {
+    final data = app.lastWeekRoutineCompletions;
+    final hasData = app.hasLastWeekRoutineData;
+    final maxVal = hasData
+        ? data.fold<int>(0, (max, v) => v > max ? v : max)
+        : 1;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -884,64 +596,169 @@ class _HomeScreenState extends State<HomeScreen> {
               const Icon(Icons.trending_up_rounded,
                   color: AppColors.primary, size: 18),
               const SizedBox(width: 6),
-              const Text('Tuần này',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14)),
+              const Text(
+                'Tuần trước',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
             ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Số routine hoàn thành mỗi ngày (${app.lastWeekRoutineRangeLabel})',
+            style: AppTypography.caption.copyWith(fontSize: 10),
+          ),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 80,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(7, (i) {
-                final val = data[i];
-                final h =
-                    maxVal > 0 ? (val / maxVal) * 56 : 4.0;
-                final isToday = i == todayIdx;
-                return Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: h.clamp(4, 56)),
-                        duration: Duration(milliseconds: 400 + i * 50),
-                        curve: Curves.easeOut,
-                        builder: (context, value, child) => Container(
-                          height: value,
-                          margin:
-                              const EdgeInsets.symmetric(horizontal: 6),
-                          decoration: BoxDecoration(
-                            color: val > 0
-                                ? (isToday
-                                    ? AppColors.primary
-                                    : AppColors.primary
-                                        .withValues(alpha: 0.6))
-                                : const Color(0xFFF0F0F0),
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(4)),
+          if (!hasData)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Bạn chưa thực hiện bất kỳ routine nào trong tuần trước.',
+                textAlign: TextAlign.center,
+                style: AppTypography.bodySm.copyWith(
+                  fontSize: 12,
+                  color: AppColors.muted,
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: 80,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List.generate(7, (i) {
+                  final val = data[i];
+                  final barHeight =
+                      maxVal > 0 ? (val / maxVal) * 56 : 4.0;
+                  return Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (val > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              '$val',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: barHeight.clamp(4, 56)),
+                          duration: Duration(milliseconds: 400 + i * 50),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) => Container(
+                            height: value,
+                            margin:
+                                const EdgeInsets.symmetric(horizontal: 6),
+                            decoration: BoxDecoration(
+                              color: val > 0
+                                  ? AppColors.primary.withValues(
+                                      alpha: i == 6 ? 0.85 : 0.65,
+                                    )
+                                  : const Color(0xFFF0F0F0),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(4),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        MockData.weekDays[i],
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: isToday
-                              ? AppColors.primary
-                              : const Color(0xFFBBBBBB),
+                        const SizedBox(height: 6),
+                        Text(
+                          app.wellness.weekDays[i],
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFBBBBBB),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                      ],
+                    ),
+                  );
+                }),
+              ),
             ),
-          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRoutineCatalogSection(BuildContext context, AppStateProvider app) {
+    final items = app.homeRoutineExtras;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Routine gợi ý thêm',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: AppColors.foreground,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => RoutineAllSheet.show(context),
+              child: Text(
+                'Xem tất cả \u2192',
+                style: AppTypography.link.copyWith(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (app.routinesLoading && items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        else if (items.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.border, width: 1.5),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.battery_3_bar,
+                    size: 36, color: AppColors.muted.withValues(alpha: 0.5)),
+                const SizedBox(height: 8),
+                Text(
+                  app.routinesError ??
+                      (app.hasDailySuggestionFilter
+                          ? 'Không có thêm gợi ý cho hôm nay'
+                          : 'Đang tải danh sách routine...'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+              ],
+            ),
+          )
+        else
+          SizedBox(
+            height: 148,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, i) {
+                final r = items[i];
+                return RoutineHomeCard(
+                  routine: r,
+                  added: false,
+                  onToggle: () => app.addRoutineToHabits(r.id),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }

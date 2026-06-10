@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:health/core/constants/app_colors.dart';
 
+/// OTP 6 ô — một TextField ẩn nhận phím (tương thích IME / bàn phím EN-VI).
 class OtpInput extends StatefulWidget {
   const OtpInput({
     super.key,
@@ -17,73 +18,107 @@ class OtpInput extends StatefulWidget {
 }
 
 class _OtpInputState extends State<OtpInput> {
-  late final List<TextEditingController> _controllers;
-  late final List<FocusNode> _focusNodes;
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _controllers = List.generate(widget.length, (_) => TextEditingController());
-    _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    _focusNode.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    for (final f in _focusNodes) {
-      f.dispose();
-    }
+    _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
-  }
-
-  void _notify() {
-    widget.onChanged(_controllers.map((c) => c.text).join());
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(widget.length, (i) {
-        return Padding(
-          padding: EdgeInsets.only(right: i < widget.length - 1 ? 8 : 0),
-          child: SizedBox(
-            width: 40,
-            child: TextField(
-              controller: _controllers[i],
-              focusNode: _focusNodes[i],
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              maxLength: 1,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                counterText: '',
-                filled: true,
-                fillColor: AppColors.surfaceMuted,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border, width: 2),
+    final code = _controller.text;
+    final hasFocus = _focusNode.hasFocus;
+    // Ô đang chờ nhập: bằng độ dài hiện tại (kẹp khi đã đủ 6).
+    final activeIndex = code.length < widget.length
+        ? code.length
+        : widget.length - 1;
+
+    return GestureDetector(
+      onTap: () => _focusNode.requestFocus(),
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.length, (i) {
+              final char = i < code.length ? code[i] : '';
+              final highlighted = hasFocus && i == activeIndex;
+
+              return Padding(
+                padding: EdgeInsets.only(right: i < widget.length - 1 ? 8 : 0),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: 40,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: highlighted ? AppColors.primary : AppColors.border,
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    char,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.foreground,
+                    ),
+                  ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              );
+            }),
+          ),
+          // TextField trong suốt — nhận toàn bộ input (paste, autofill, phím số).
+          Opacity(
+            opacity: 0.01,
+            child: SizedBox(
+              width: widget.length * 48.0,
+              height: 48,
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.done,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                enableSuggestions: false,
+                autocorrect: false,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
+                showCursor: false,
+                enableIMEPersonalizedLearning: false,
+                style: const TextStyle(fontSize: 1, height: 1),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  counterText: '',
+                  contentPadding: EdgeInsets.zero,
                 ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(widget.length),
+                ],
+                onChanged: (v) {
+                  setState(() {});
+                  widget.onChanged(v);
+                },
               ),
-              onChanged: (v) {
-                if (v.isNotEmpty && i < widget.length - 1) {
-                  _focusNodes[i + 1].requestFocus();
-                }
-                if (v.isEmpty && i > 0) {
-                  _focusNodes[i - 1].requestFocus();
-                }
-                _notify();
-              },
             ),
           ),
-        );
-      }),
+        ],
+      ),
     );
   }
 }

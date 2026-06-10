@@ -144,7 +144,7 @@ class _PaymentModalState extends State<PaymentModal>
   }
 
   String _headerTitle(PaymentStep step) => switch (step) {
-        PaymentStep.plan => 'Premium',
+        PaymentStep.plan => 'Gói cao cấp',
         PaymentStep.method => 'Phương thức',
         PaymentStep.input => 'Thanh toán',
         PaymentStep.otp => 'Xác minh',
@@ -177,7 +177,7 @@ class _PaymentModalState extends State<PaymentModal>
     app.setIsPremium(true);
     app.setPremiumInfo(PremiumInfo(
       productId: 'HP-PRE-MOCK',
-      productName: 'HealthPath Premium',
+      productName: 'HealthPath Cao cấp',
       benefits: const [
         'Không quảng cáo',
         'Toàn bộ audio thư giãn',
@@ -884,7 +884,7 @@ class _PaymentModalState extends State<PaymentModal>
         if (_otpError) ...[
           const SizedBox(height: 8),
           const Text(
-            'Ma OTP khong chinh xac',
+            'Mã OTP không chính xác',
             textAlign: TextAlign.center,
             style:
                 TextStyle(fontSize: 13, color: AppColors.destructive),
@@ -979,7 +979,7 @@ class _PaymentModalState extends State<PaymentModal>
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Chào mừng bạn đến với Premium.',
+                    'Chào mừng bạn đến với gói cao cấp.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 14, color: Color(0xFF666666)),

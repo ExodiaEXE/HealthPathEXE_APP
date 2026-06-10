@@ -1,9 +1,7 @@
-# Safe dev run — mock backend, no secrets in repo
+# Chạy app — đọc cấu hình từ file .env (không cần --dart-define)
 Set-Location $PSScriptRoot\..
 
+& "$PSScriptRoot\setup_env.ps1"
+
 flutter pub get
-flutter run `
-  --dart-define=API_BASE_URL= `
-  --dart-define=JWT_ISSUER= `
-  --dart-define=GOOGLE_CLIENT_ID= `
-  --dart-define=FACEBOOK_APP_ID=
+flutter run

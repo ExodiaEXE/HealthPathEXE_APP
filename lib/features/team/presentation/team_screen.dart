@@ -1,12 +1,18 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:health/core/constants/app_colors.dart';
 import 'package:health/core/theme/app_typography.dart';
-import 'package:health/shared/data/mock_data.dart';
+import 'package:health/domain/entities/group_entities.dart';
+import 'package:health/domain/usecases/wellness/wellness_content_usecase.dart';
 import 'package:health/shared/models/app_models.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
+import 'package:health/features/home/presentation/habits_all_sheet.dart';
+import 'package:health/features/team/presentation/create_group_screen.dart';
+import 'package:health/shared/widgets/app_snackbar.dart';
+import 'package:health/shared/widgets/habit_row_tile.dart';
 import 'package:provider/provider.dart';
 
 class TeamScreen extends StatefulWidget {
@@ -17,16 +23,19 @@ class TeamScreen extends StatefulWidget {
 }
 
 class _TeamScreenState extends State<TeamScreen> {
-  String _noTeamPage = 'main';
-  final _newGroupName = TextEditingController();
+  WellnessContentUseCase get _content =>
+      context.read<AppStateProvider>().wellness;
+
+  /// main | manage | dashboard | join
+  String _teamPage = 'main';
   final _joinSearch = TextEditingController();
-  final _cheered = <int>{};
   bool _showCheckInToast = false;
   bool _inviteSheetOpen = false;
+  String? _openingGroupId;
+  String? _joiningGroupId;
 
   @override
   void dispose() {
-    _newGroupName.dispose();
     _joinSearch.dispose();
     super.dispose();
   }
@@ -34,26 +43,42 @@ class _TeamScreenState extends State<TeamScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppStateProvider>();
-    if (!app.hasTeam) return _buildNoTeamView(app);
-    return _teamDashboard(app);
+
+    if (_teamPage == 'dashboard' && app.hasTeam) {
+      return _teamDashboard(app);
+    }
+
+    if (_teamPage == 'join') {
+      return _JoinGroupPage(
+        key: const ValueKey('join-group'),
+        controller: _joinSearch,
+        onBack: () => setState(() {
+          _teamPage = 'main';
+          _joinSearch.clear();
+        }),
+        buildJoinRow: _buildJoinRow,
+        buildEmptySearch: _buildEmptySearch,
+        buildLoadingList: _buildJoinLoadingList,
+      );
+    }
+
+    if (_teamPage == 'manage') {
+      return _buildManageTeamsView(app);
+    }
+
+    if (app.teamLoading && !app.hasAnyTeam) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return _buildTeamMainPage(app);
   }
 
-  // ─── NO-TEAM VIEW ───────────────────────────────────────────────────────────
+  // ─── TRANG NHÓM CHÍNH ───────────────────────────────────────────────────────
 
-  Widget _buildNoTeamView(AppStateProvider app) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
-      child: _noTeamPage == 'create'
-          ? _buildCreateGroup(app)
-          : _noTeamPage == 'join'
-              ? _buildJoinGroup(app)
-              : _buildNoTeamMain(),
-    );
-  }
-
-  Widget _buildNoTeamMain() {
+  Widget _buildTeamMainPage(AppStateProvider app) {
+    final hasTeams = app.hasAnyTeam;
     return ListView(
-      key: const ValueKey('no-team-main'),
+      key: const ValueKey('team-main'),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
       children: [
         const Text('Nhóm', style: AppTypography.title),
@@ -70,20 +95,33 @@ class _TeamScreenState extends State<TeamScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Bạn chưa có nhóm',
+        Text(
+          hasTeams ? 'Nhóm sức khỏe của bạn' : 'Bạn chưa có nhóm',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.foreground),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.foreground,
+          ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Tạo nhóm mới hoặc tham gia nhóm đã có sẵn để cùng nhau rèn luyện sức khỏe',
+        Text(
+          hasTeams
+              ? 'Tạo nhóm mới, tham gia nhóm khác hoặc quản lý các nhóm đang tham gia'
+              : 'Tạo nhóm mới hoặc tham gia nhóm đã có sẵn để cùng nhau rèn luyện sức khỏe',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: AppColors.muted),
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
         ),
         const SizedBox(height: 24),
         _buildActionCard(
-          onTap: () => setState(() => _noTeamPage = 'create'),
+          onTap: () async {
+            final created = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+            );
+            if (created == true && mounted) {
+              setState(() => _teamPage = 'dashboard');
+            }
+          },
           backgroundColor: AppColors.primary,
           icon: Icons.add,
           iconBgColor: Colors.white.withValues(alpha: 0.2),
@@ -96,7 +134,10 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
         const SizedBox(height: 12),
         _buildActionCard(
-          onTap: () => setState(() => _noTeamPage = 'join'),
+          onTap: () {
+            setState(() => _teamPage = 'join');
+            context.read<AppStateProvider>().searchPublicGroups('');
+          },
           backgroundColor: Colors.white,
           borderColor: AppColors.border,
           icon: Icons.login,
@@ -108,9 +149,36 @@ class _TeamScreenState extends State<TeamScreen> {
           subtitleColor: AppColors.muted,
           chevronColor: AppColors.muted,
         ),
-        const SizedBox(height: 20),
-        _buildBenefitsCard(),
+        if (hasTeams) ...[
+          const SizedBox(height: 12),
+          _buildActionCard(
+            onTap: () => setState(() => _teamPage = 'manage'),
+            backgroundColor: Colors.white,
+            borderColor: AppColors.border,
+            icon: Icons.folder_shared_outlined,
+            iconBgColor: AppColors.primary.withValues(alpha: 0.1),
+            iconColor: AppColors.primary,
+            title: 'Quản lý nhóm',
+            titleColor: AppColors.foreground,
+            subtitle: '${app.myTeams.length} nhóm đang tham gia',
+            subtitleColor: AppColors.muted,
+            chevronColor: AppColors.muted,
+          ),
+        ],
+        if (!hasTeams) ...[
+          const SizedBox(height: 20),
+          _buildBenefitsCard(),
+        ],
       ],
+    );
+  }
+
+  Widget _buildJoinLoadingList() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(32),
+        child: CircularProgressIndicator(),
+      ),
     );
   }
 
@@ -197,7 +265,11 @@ class _TeamScreenState extends State<TeamScreen> {
                   children: [
                     Text(b.$1, style: const TextStyle(fontSize: 16)),
                     const SizedBox(width: 10),
-                    Text(b.$2, style: const TextStyle(fontSize: 13, color: AppColors.foreground)),
+                    Expanded(
+                      child: Text(b.$2,
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.foreground)),
+                    ),
                   ],
                 ),
               )),
@@ -206,97 +278,92 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
-  // ─── CREATE GROUP ───────────────────────────────────────────────────────────
-
-  Widget _buildCreateGroup(AppStateProvider app) {
-    final isValid = _newGroupName.text.trim().isNotEmpty;
-    return Padding(
-      key: const ValueKey('create-group'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _buildJoinRow({
+    required AppStateProvider app,
+    required String emoji,
+    required String name,
+    required int memberCount,
+    required String groupId,
+    required Future<bool> Function() onJoin,
+  }) {
+    final isJoining = _joiningGroupId == groupId;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
         children: [
-          Row(
-            children: [
-              _backButton(() => setState(() => _noTeamPage = 'main')),
-              const SizedBox(width: 12),
-              const Text(
-                'Tạo nhóm mới',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.foreground),
-              ),
-            ],
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F5F5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(emoji, style: const TextStyle(fontSize: 20)),
           ),
-          const SizedBox(height: 32),
-          Center(
-            child: Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.groups, size: 32, color: AppColors.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+                Text('$memberCount thành viên',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.muted)),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-          const Text(
-            'Tên nhóm',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.mutedForeground),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _newGroupName,
-            maxLength: 30,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              hintText: 'VD: Nhóm Sức Khỏe',
-              hintStyle: AppTypography.hint,
-              counterText: '${_newGroupName.text.length}/30',
-              counterStyle: const TextStyle(fontSize: 11, color: AppColors.muted),
-              filled: true,
-              fillColor: const Color(0xFFFAFAFA),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
           GestureDetector(
-            onTap: isValid
-                ? () {
-                    app.setHasTeam(true, name: _newGroupName.text.trim());
-                    setState(() {
-                      _noTeamPage = 'main';
-                      _newGroupName.clear();
-                    });
-                  }
-                : null,
+            onTap: (_joiningGroupId != null && !isJoining)
+                ? null
+                : () async {
+                    setState(() => _joiningGroupId = groupId);
+                    final ok = await onJoin();
+                    if (!mounted) return;
+                    setState(() => _joiningGroupId = null);
+                    if (ok) {
+                      setState(() {
+                        _joinSearch.clear();
+                        _teamPage = 'dashboard';
+                      });
+                    } else if (app.teamError != null) {
+                      AppSnackBar.show(context, app.teamError!);
+                    }
+                  },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              height: 48,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: isValid ? AppColors.primary : const Color(0xFFF0F0F0),
-                borderRadius: BorderRadius.circular(12),
+                color: isJoining
+                    ? AppColors.accent.withValues(alpha: 0.6)
+                    : AppColors.accent,
+                borderRadius: BorderRadius.circular(20),
               ),
-              alignment: Alignment.center,
-              child: Text(
-                'Tạo nhóm',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: isValid ? Colors.white : AppColors.muted,
-                ),
-              ),
+              child: isJoining
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Tham gia',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -304,138 +371,106 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
-  // ─── JOIN GROUP ─────────────────────────────────────────────────────────────
-
-  Widget _buildJoinGroup(AppStateProvider app) {
-    final groups = MockData.existingGroups
-        .where((g) => g.name.toLowerCase().contains(_joinSearch.text.toLowerCase()))
-        .toList();
-
-    return Column(
-      key: const ValueKey('join-group'),
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _backButton(() => setState(() {
-                        _noTeamPage = 'main';
-                        _joinSearch.clear();
-                      })),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Tham gia nhóm',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.foreground),
+  Widget _buildLeaderboardRow({
+    required String name,
+    required String avatar,
+    required int points,
+    required bool isMe,
+    required int rank,
+  }) {
+    final isFirst = rank == 1;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: isFirst ? const Color(0xFFE8A87C) : AppColors.surfaceMuted,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: isFirst
+                ? const Icon(Icons.emoji_events, size: 13, color: Colors.white)
+                : Text('$rank',
+                    style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.muted)),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              avatar,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
+                if (isMe) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'BẠN',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary),
+                    ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _joinSearch,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Tìm nhóm...',
-                  hintStyle: AppTypography.hint,
-                  prefixIcon: const Icon(Icons.search, color: AppColors.muted, size: 20),
-                  filled: true,
-                  fillColor: const Color(0xFFFAFAFA),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'NHÓM PHỔ BIẾN (${groups.length})',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.muted,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
+              ],
+            ),
           ),
-        ),
-        Expanded(
-          child: groups.isEmpty
-              ? _buildEmptySearch()
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-                  itemCount: groups.length,
-                  separatorBuilder: (context, idx) => const SizedBox(height: 10),
-                  itemBuilder: (_, i) {
-                    final g = groups[i];
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F5F5),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(g.emoji, style: const TextStyle(fontSize: 20)),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(g.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                                Text('${g.members} thành viên', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              app.setHasTeam(true, name: g.name);
-                              setState(() {
-                                _noTeamPage = 'main';
-                                _joinSearch.clear();
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                              decoration: BoxDecoration(
-                                color: AppColors.accent,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                'Tham gia',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$points điểm',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -463,13 +498,302 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
+  // ─── QUẢN LÝ NHÓM ───────────────────────────────────────────────────────────
+
+  Widget _buildManageTeamsView(AppStateProvider app) {
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: app.loadTeamState,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+            children: [
+              Row(
+                children: [
+                  _TeamBackButton(
+                    onTap: _openingGroupId == null
+                        ? () => setState(() => _teamPage = 'main')
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Quản lý nhóm',
+                      style: AppTypography.title,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${app.myTeams.length} nhóm đang tham gia',
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+              const SizedBox(height: 20),
+              if (app.myTeams.isEmpty)
+                _buildEmptyManageTeams()
+              else
+                ...app.myTeams.map(_buildManageGroupCard),
+            ],
+          ),
+        ),
+        if (_openingGroupId != null)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.08),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyManageTeams() {
+    return Container(
+      margin: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.groups_outlined, size: 40, color: AppColors.muted),
+          SizedBox(height: 12),
+          Text(
+            'Bạn chưa tham gia nhóm nào',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Tạo hoặc tham gia nhóm từ trang Nhóm',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManageGroupCard(GroupRecord group) {
+    final isOpening = _openingGroupId == group.id;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
+        onTap: _openingGroupId != null
+            ? null
+            : () async {
+                setState(() => _openingGroupId = group.id);
+                await context.read<AppStateProvider>().openTeamGroup(group);
+                if (!mounted) return;
+                setState(() {
+                  _openingGroupId = null;
+                  _teamPage = 'dashboard';
+                });
+              },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isOpening ? AppColors.primary.withValues(alpha: 0.04) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isOpening ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.groups, color: AppColors.accent, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.name,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.foreground,
+                      ),
+                    ),
+                    if (group.description != null && group.description!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        group.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      '${group.memberCount} thành viên',
+                      style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              if (isOpening)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmLeaveTeam(AppStateProvider app) async {
+    final isLastMember = app.teamMemberCount <= 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 24,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: AppColors.destructive.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isLastMember ? Icons.group_remove_outlined : Icons.logout_rounded,
+                  color: AppColors.destructive,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isLastMember ? 'Rời nhóm và giải tán?' : 'Rời nhóm?',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.foreground,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                isLastMember
+                    ? 'Bạn là thành viên cuối cùng còn lại. Nếu rời nhóm, nhóm "${app.teamName}" sẽ bị xóa và không thể khôi phục.'
+                    : 'Bạn có chắc muốn rời khỏi nhóm "${app.teamName}"?',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: AppColors.mutedForeground,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'Hủy',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.foreground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: AppColors.destructive,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          isLastMember ? 'Rời và giải tán' : 'Rời nhóm',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final message = await app.leaveCurrentTeam();
+    if (!mounted) return;
+
+    final stillHasTeams = context.read<AppStateProvider>().hasAnyTeam;
+    setState(() => _teamPage = stillHasTeams ? 'manage' : 'main');
+
+    if (message != null && message.isNotEmpty) {
+      AppSnackBar.show(context, message);
+    }
+  }
+
   // ─── TEAM DASHBOARD ─────────────────────────────────────────────────────────
 
   Widget _teamDashboard(AppStateProvider app) {
-    final inviteCode =
-        'HP-${app.teamName.replaceAll(' ', '').substring(0, app.teamName.length.clamp(0, 4)).toUpperCase()}-2026';
+    final inviteCode = app.teamInviteCode.isNotEmpty
+        ? app.teamInviteCode
+        : 'HP-${app.teamName.replaceAll(' ', '').substring(0, app.teamName.length.clamp(0, 4)).toUpperCase()}-2026';
     final habits = app.getActiveHabits();
-    final completed = habits.where((h) => app.todayCheckedHabits.contains(h.id)).length;
+    final completed = habits.where((h) => app.isHabitCompleted(h.id)).length;
 
     return Stack(
       children: [
@@ -479,11 +803,11 @@ class _TeamScreenState extends State<TeamScreen> {
             _buildDashboardHeader(app),
             const SizedBox(height: 16),
             if (_showCheckInToast) _buildCheckInToast(),
-            _buildChallengeCard(),
+            _buildChallengeCard(app),
             const SizedBox(height: 20),
             _buildSharedHabits(app, habits, completed),
             const SizedBox(height: 20),
-            _buildLeaderboard(),
+            _buildLeaderboard(app),
             const SizedBox(height: 20),
             _buildMotivationalQuote(),
           ],
@@ -496,6 +820,22 @@ class _TeamScreenState extends State<TeamScreen> {
   Widget _buildDashboardHeader(AppStateProvider app) {
     return Row(
       children: [
+        GestureDetector(
+          onTap: () {
+            app.closeTeamDashboard();
+            setState(() => _teamPage = 'manage');
+          },
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.border.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.arrow_back, size: 18, color: AppColors.foreground),
+          ),
+        ),
+        const SizedBox(width: 8),
         Container(
           width: 40,
           height: 40,
@@ -512,7 +852,7 @@ class _TeamScreenState extends State<TeamScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(app.teamName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const Text('4 thành viên', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+              Text('${app.teamMemberCount} thành viên', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
             ],
           ),
         ),
@@ -530,15 +870,40 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: () {
-            if (!app.teamCheckInToday) {
-              app.setTeamCheckInToday(true);
-              setState(() => _showCheckInToast = true);
-              Future.delayed(const Duration(seconds: 3), () {
-                if (mounted) setState(() => _showCheckInToast = false);
-              });
-            }
-          },
+          onTap: app.teamLoading ? null : () => _confirmLeaveTeam(app),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.destructive.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Rời nhóm',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.destructive,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: app.teamLoading
+              ? null
+              : () async {
+                  if (app.teamCheckInToday) return;
+                  final err = await app.setTeamCheckInToday(true);
+                  if (!mounted) return;
+                  if (err != null) {
+                    AppSnackBar.show(context, err);
+                    return;
+                  }
+                  setState(() => _showCheckInToast = true);
+                  Future.delayed(const Duration(seconds: 3), () {
+                    if (mounted) setState(() => _showCheckInToast = false);
+                  });
+                },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -566,29 +931,19 @@ class _TeamScreenState extends State<TeamScreen> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.star, color: Colors.white, size: 18),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Tuyệt vời! Bạn đã điểm danh hôm nay',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
-            ),
-          ),
-        ],
+      child: const AppNoticeBanner(
+        icon: Icons.star_rounded,
+        message: 'Tuyệt vời! Bạn đã điểm danh hôm nay',
       ),
     );
   }
 
-  Widget _buildChallengeCard() {
-    const progressValue = 0.65;
-    const completedDays = 5;
+  Widget _buildChallengeCard(AppStateProvider app) {
+    final challenge = app.teamActiveChallenge;
+    final title = challenge?.title ?? 'Thử thách 7 ngày thả lỏng';
+    final progressValue = app.currentWeekChallengeProgress;
+    final progressPercent = app.currentWeekChallengePercent;
+    final dayDone = app.currentWeekChallengeDayDone;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -606,9 +961,10 @@ class _TeamScreenState extends State<TeamScreen> {
       ),
       child: Column(
         children: [
-          const Text(
-            'Thử thách 7 ngày thả lỏng',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.foreground),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.foreground),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
           SizedBox(
@@ -616,12 +972,12 @@ class _TeamScreenState extends State<TeamScreen> {
             height: 112,
             child: CustomPaint(
               painter: _CircularProgressPainter(progress: progressValue),
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('65%', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.primary)),
-                    Text('hoàn thành', style: TextStyle(fontSize: 10, color: AppColors.muted)),
+                    Text('$progressPercent%', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                    const Text('hoàn thành', style: TextStyle(fontSize: 10, color: AppColors.muted)),
                   ],
                 ),
               ),
@@ -631,7 +987,7 @@ class _TeamScreenState extends State<TeamScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(7, (i) {
-              final isDone = i < completedDays;
+              final isDone = i < dayDone.length && dayDone[i];
               return Container(
                 width: 28,
                 height: 28,
@@ -657,6 +1013,7 @@ class _TeamScreenState extends State<TeamScreen> {
   }
 
   Widget _buildSharedHabits(AppStateProvider app, List<RoutineItem> habits, int completed) {
+    final visibleHabits = habits.take(5).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -665,17 +1022,51 @@ class _TeamScreenState extends State<TeamScreen> {
             const Expanded(
               child: Text(
                 'Nhiệm vụ nhóm hôm nay',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.foreground),
               ),
             ),
-            Text(
-              '$completed/${habits.length}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$completed/${habits.length}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
             ),
+            if (habits.length > 5) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => HabitsAllSheet.show(
+                  context,
+                  title: 'Nhiệm vụ nhóm hôm nay',
+                ),
+                child: Text(
+                  'Xem tất cả \u2192',
+                  style: AppTypography.link.copyWith(fontSize: 12),
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
-        if (habits.isEmpty) _buildNoHabitsInfo() else ...habits.map((h) => _buildHabitItem(app, h)),
+        if (habits.isEmpty)
+          _buildNoHabitsInfo()
+        else
+          ...visibleHabits.map(
+            (h) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: HabitRowTile(habitId: h.id, label: h.text),
+            ),
+          ),
       ],
     );
   }
@@ -715,55 +1106,37 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
-  Widget _buildHabitItem(AppStateProvider app, RoutineItem h) {
-    final done = app.todayCheckedHabits.contains(h.id);
-    return GestureDetector(
-      onTap: () => app.toggleTodayHabit(h.id, h.text),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: done ? AppColors.primary.withValues(alpha: 0.06) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: done ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: done ? AppColors.primary : Colors.white,
-                shape: BoxShape.circle,
-                border: done ? null : Border.all(color: AppColors.border, width: 2),
-              ),
-              child: done ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                h.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: done ? AppColors.muted : AppColors.foreground,
-                  decoration: done ? TextDecoration.lineThrough : null,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ─── LEADERBOARD ────────────────────────────────────────────────────────────
 
-  Widget _buildLeaderboard() {
-    final members = List.of(MockData.teamMembers)..sort((a, b) => b.score.compareTo(a.score));
+  Widget _buildLeaderboard(AppStateProvider app) {
+    final useApi = app.teamMembers.isNotEmpty;
+    final mockMembers = List.of(_content.teamMembers);
+
+    final apiRows = app.teamMembers.map((m) {
+      return (
+        name: m.name,
+        avatar: m.avatar,
+        points: app.weeklyLeaderboardPointsFor(m),
+        isMe: m.isCurrentUser,
+      );
+    }).toList()
+      ..sort((a, b) => b.points.compareTo(a.points));
+
+    final mockRows = mockMembers.map((m) {
+      final points = m.isMe
+          ? app.myWeeklyLeaderboardPointsRounded
+          : (m.score * (100 / 14)).round().clamp(0, 100);
+      return (
+        name: m.name,
+        avatar: m.avatar,
+        points: points,
+        isMe: m.isMe,
+      );
+    }).toList()
+      ..sort((a, b) => b.points.compareTo(a.points));
+
+    final rows = useApi ? apiRows : mockRows;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -771,108 +1144,20 @@ class _TeamScreenState extends State<TeamScreen> {
           'BẢNG XẾP HẠNG',
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted, letterSpacing: 0.5),
         ),
+        const SizedBox(height: 4),
+        const Text(
+          'Thang điểm tuần này: tối đa 100 điểm (điểm danh + routine)',
+          style: TextStyle(fontSize: 10, color: AppColors.muted),
+        ),
         const SizedBox(height: 12),
-        ...List.generate(members.length, (i) {
-          final m = members[i];
-          final rank = i + 1;
-          final isFirst = rank == 1;
-          final isCheered = _cheered.contains(m.id);
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: isFirst ? const Color(0xFFE8A87C) : AppColors.surfaceMuted,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: isFirst
-                      ? const Icon(Icons.emoji_events, size: 13, color: Colors.white)
-                      : Text('$rank', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    m.avatar,
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Text(m.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                      if (m.isMe) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'BẠN',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.primary),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(7, (d) {
-                    final filled = d < m.score;
-                    return Container(
-                      width: 14,
-                      height: 14,
-                      margin: EdgeInsets.only(left: d == 0 ? 0 : 2),
-                      decoration: BoxDecoration(
-                        color: filled ? AppColors.primary : AppColors.surfaceMuted,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: filled ? const Icon(Icons.check, size: 9, color: Colors.white) : null,
-                    );
-                  }),
-                ),
-                const SizedBox(width: 8),
-                if (!m.isMe)
-                  GestureDetector(
-                    onTap: () => setState(() => _cheered.add(m.id)),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: isCheered
-                            ? AppColors.destructive.withValues(alpha: 0.1)
-                            : AppColors.surfaceMuted,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        isCheered ? Icons.favorite : Icons.favorite_border,
-                        size: 16,
-                        color: isCheered ? AppColors.destructive : AppColors.muted,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+        ...List.generate(rows.length, (i) {
+          final row = rows[i];
+          return _buildLeaderboardRow(
+            name: row.name,
+            avatar: row.avatar,
+            points: row.points,
+            isMe: row.isMe,
+            rank: i + 1,
           );
         }),
       ],
@@ -1029,22 +1314,6 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
-  // ─── COMMON WIDGETS ─────────────────────────────────────────────────────────
-
-  Widget _backButton(VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: const BoxDecoration(
-          color: Color(0xFFF5F5F5),
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.chevron_left, size: 20, color: AppColors.foreground),
-      ),
-    );
-  }
 }
 
 // ─── CIRCULAR PROGRESS PAINTER ──────────────────────────────────────────────
@@ -1087,5 +1356,193 @@ class _CircularProgressPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _CircularProgressPainter oldDelegate) {
     return oldDelegate.progress != progress;
+  }
+}
+
+class _TeamBackButton extends StatelessWidget {
+  const _TeamBackButton({this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.4 : 1,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF5F5F5),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.chevron_left, size: 20, color: AppColors.foreground),
+        ),
+      ),
+    );
+  }
+}
+
+class _JoinGroupPage extends StatelessWidget {
+  const _JoinGroupPage({
+    super.key,
+    required this.controller,
+    required this.onBack,
+    required this.buildJoinRow,
+    required this.buildEmptySearch,
+    required this.buildLoadingList,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onBack;
+  final Widget Function({
+    required AppStateProvider app,
+    required String emoji,
+    required String name,
+    required int memberCount,
+    required String groupId,
+    required Future<bool> Function() onJoin,
+  }) buildJoinRow;
+  final Widget Function() buildEmptySearch;
+  final Widget Function() buildLoadingList;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _TeamBackButton(onTap: onBack),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Tham gia nhóm',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.foreground,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _JoinSearchField(
+                controller: controller,
+                onSearch: context.read<AppStateProvider>().searchPublicGroups,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Consumer<AppStateProvider>(
+            builder: (context, app, _) {
+              return ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (context, searchValue, _) {
+                  final query = searchValue.text.toLowerCase();
+                  final filteredApi = app.publicGroups
+                      .where((g) => g.name.toLowerCase().contains(query))
+                      .toList();
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: Text(
+                          'NHÓM CÔNG KHAI (${filteredApi.length})',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: app.teamLoading && app.publicGroups.isEmpty
+                            ? buildLoadingList()
+                            : filteredApi.isEmpty
+                                ? buildEmptySearch()
+                                : ListView.separated(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        20, 0, 20, 100),
+                                    itemCount: filteredApi.length,
+                                    separatorBuilder: (context, idx) =>
+                                        const SizedBox(height: 10),
+                                    itemBuilder: (_, i) => buildJoinRow(
+                                      app: app,
+                                      emoji: '👥',
+                                      name: filteredApi[i].name,
+                                      memberCount: filteredApi[i].memberCount,
+                                      groupId: filteredApi[i].id,
+                                      onJoin: () =>
+                                          app.joinTeamById(filteredApi[i].id),
+                                    ),
+                                  ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _JoinSearchField extends StatefulWidget {
+  const _JoinSearchField({
+    required this.controller,
+    required this.onSearch,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onSearch;
+
+  @override
+  State<_JoinSearchField> createState() => _JoinSearchFieldState();
+}
+
+class _JoinSearchFieldState extends State<_JoinSearchField> {
+  static final _border = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: const BorderSide(color: AppColors.border),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: widget.controller,
+      keyboardType: TextInputType.text,
+      textCapitalization: TextCapitalization.sentences,
+      onChanged: widget.onSearch,
+      style: const TextStyle(
+        fontSize: 14,
+        height: 1.35,
+        color: AppColors.foreground,
+      ),
+      decoration: InputDecoration(
+        hintText: 'Tìm nhóm...',
+        hintStyle: AppTypography.hint,
+        prefixIcon: const Icon(Icons.search, color: AppColors.muted, size: 20),
+        filled: true,
+        fillColor: const Color(0xFFFAFAFA),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: _border,
+        enabledBorder: _border,
+        focusedBorder: _border.copyWith(
+          borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+        ),
+      ),
+    );
   }
 }

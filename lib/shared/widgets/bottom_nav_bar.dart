@@ -84,14 +84,22 @@ class HealthBottomNav extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutBack,
-              width: selected ? 4 : 0,
-              height: selected ? 4 : 0,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
+            // Indicator dot. Web animates `scale` (0↔1) with an overshoot
+            // curve; AnimatedScale keeps a fixed 4x4 box so the easeOutBack
+            // overshoot can never produce negative layout constraints.
+            SizedBox(
+              width: 4,
+              height: 4,
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutBack,
+                scale: selected ? 1 : 0,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
               ),
             ),
           ],
@@ -101,6 +109,7 @@ class HealthBottomNav extends StatelessWidget {
   }
 
   Widget _buildCenterButton() {
+    final selected = activeTab == ActiveTab.companion;
     return HpTapScale(
       scale: 0.9,
       onTap: onCompanionTap,
@@ -113,7 +122,7 @@ class HealthBottomNav extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: selected ? AppColors.primaryDark : AppColors.primary,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -124,7 +133,7 @@ class HealthBottomNav extends StatelessWidget {
                 ],
               ),
               child: const Icon(
-                Icons.chat_bubble_rounded,
+                Icons.pets_rounded,
                 color: Colors.white,
                 size: 24,
               ),
@@ -135,8 +144,9 @@ class HealthBottomNav extends StatelessWidget {
             child: Text(
               'Bạn đồng hành',
               style: AppTypography.micro.copyWith(
-                color: AppColors.primary,
+                color: selected ? AppColors.primaryDark : AppColors.primary,
                 fontSize: 9,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
               ),
             ),
           ),

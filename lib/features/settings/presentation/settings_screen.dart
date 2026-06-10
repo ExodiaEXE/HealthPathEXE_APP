@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:health/core/constants/app_colors.dart';
+import 'package:health/domain/usecases/auth/change_password_usecase.dart';
+import 'package:health/features/settings/presentation/notification_views.dart';
 import 'package:health/shared/models/app_models.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
+import 'package:health/shared/widgets/app_snackbar.dart';
+import 'package:health/shared/widgets/profile_text_field.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -9,16 +13,25 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppStateProvider>();
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      child: switch (app.settingsView) {
-        SettingsView.main => _MainSettings(key: const ValueKey('main')),
-        SettingsView.editProfile => _EditProfile(key: const ValueKey('edit')),
-        SettingsView.changePassword => _ChangePassword(key: const ValueKey('pw')),
-        SettingsView.notifications => _Notifications(key: const ValueKey('notif')),
-        SettingsView.history => _History(key: const ValueKey('history')),
-        SettingsView.wallet => _Wallet(key: const ValueKey('wallet')),
+    return Selector<AppStateProvider, SettingsView>(
+      selector: (_, app) => app.settingsView,
+      builder: (context, view, _) {
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: switch (view) {
+            SettingsView.main => _MainSettings(key: const ValueKey('main')),
+            SettingsView.editProfile =>
+              _EditProfile(key: const ValueKey('edit')),
+            SettingsView.changePassword =>
+              _ChangePassword(key: const ValueKey('pw')),
+            SettingsView.notifications =>
+              const NotificationSettingsView(key: ValueKey('notif')),
+            SettingsView.notificationInbox =>
+              const NotificationInboxView(key: ValueKey('notif-inbox')),
+            SettingsView.history => _History(key: const ValueKey('history')),
+            SettingsView.wallet => _Wallet(key: const ValueKey('wallet')),
+          },
+        );
       },
     );
   }
@@ -26,19 +39,32 @@ class SettingsScreen extends StatelessWidget {
 
 // ─────────────────── MAIN SETTINGS ───────────────────
 
-class _MainSettings extends StatelessWidget {
+class _MainSettings extends StatefulWidget {
   const _MainSettings({super.key});
+
+  @override
+  State<_MainSettings> createState() => _MainSettingsState();
+}
+
+class _MainSettingsState extends State<_MainSettings> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppStateProvider>().refreshUnreadNotificationCount();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppStateProvider>();
 
     final menuItems = [
-      (icon: Icons.edit_outlined, label: 'Chỉnh sửa hồ sơ', color: const Color(0xFF3D7A2E), view: SettingsView.editProfile),
-      (icon: Icons.lock_outline, label: 'Đổi mật khẩu', color: const Color(0xFF4A90C8), view: SettingsView.changePassword),
-      (icon: Icons.account_balance_wallet_outlined, label: 'Ví & Thanh toán', color: const Color(0xFFD63384), view: SettingsView.wallet),
-      (icon: Icons.notifications_outlined, label: 'Thông báo', color: const Color(0xFFE8A87C), view: SettingsView.notifications),
-      (icon: Icons.history, label: 'Lịch sử thói quen', color: const Color(0xFF4A90C8), view: SettingsView.history),
+      (icon: Icons.edit_outlined, label: 'Chỉnh sửa hồ sơ', color: const Color(0xFF3D7A2E), view: SettingsView.editProfile, enabled: true),
+      (icon: Icons.lock_outline, label: 'Đổi mật khẩu', color: const Color(0xFF4A90C8), view: SettingsView.changePassword, enabled: !app.isSocialAuth),
+      (icon: Icons.account_balance_wallet_outlined, label: 'Ví & Thanh toán', color: const Color(0xFFD63384), view: SettingsView.wallet, enabled: true),
+      (icon: Icons.notifications_outlined, label: 'Thông báo', color: const Color(0xFFE8A87C), view: SettingsView.notifications, enabled: true),
+      (icon: Icons.history, label: 'Lịch sử thói quen', color: const Color(0xFF4A90C8), view: SettingsView.history, enabled: true),
     ];
 
     return ListView(
@@ -123,7 +149,7 @@ class _MainSettings extends StatelessWidget {
                         if (app.isPremium) const Icon(Icons.workspace_premium, size: 12, color: Color(0xFFE8A87C)),
                         if (app.isPremium) const SizedBox(width: 4),
                         Text(
-                          app.isPremium ? 'Premium' : 'Free',
+                          app.isPremium ? 'Cao cấp' : 'Miễn phí',
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: app.isPremium ? const Color(0xFFE8A87C) : const Color(0xFF999999)),
                         ),
                       ],
@@ -170,6 +196,9 @@ class _MainSettings extends StatelessWidget {
         // Menu items
         ...List.generate(menuItems.length, (i) {
           final item = menuItems[i];
+          final enabled = item.enabled;
+          final iconColor = enabled ? item.color : const Color(0xFFBDBDBD);
+          final textColor = enabled ? AppColors.foreground : const Color(0xFFBDBDBD);
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Material(
@@ -180,23 +209,62 @@ class _MainSettings extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: enabled ? Colors.white : const Color(0xFFF8F8F8),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: enabled ? AppColors.border : const Color(0xFFEEEEEE)),
                   ),
                   child: Row(
                     children: [
                       Container(
                         width: 36, height: 36,
                         decoration: BoxDecoration(
-                          color: item.color.withValues(alpha: 0.12),
+                          color: iconColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(item.icon, size: 16, color: item.color),
+                        child: Icon(item.icon, size: 16, color: iconColor),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(child: Text(item.label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.foreground))),
-                      const Icon(Icons.chevron_right, size: 16, color: Color(0xFFD4D4D4)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textColor)),
+                            if (!enabled && item.view == SettingsView.changePassword)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  app.authProvider == AuthProviderType.google
+                                      ? 'Đăng nhập bằng Google'
+                                      : 'Đăng nhập bằng Facebook',
+                                  style: const TextStyle(fontSize: 10, color: Color(0xFFBDBDBD)),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (item.view == SettingsView.notifications &&
+                          app.unreadNotificationCount > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.coral,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            app.unreadNotificationCount > 99
+                                ? '99+'
+                                : '${app.unreadNotificationCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Icon(Icons.chevron_right, size: 16, color: enabled ? const Color(0xFFD4D4D4) : const Color(0xFFE0E0E0)),
                     ],
                   ),
                 ),
@@ -292,18 +360,22 @@ class _EditProfile extends StatefulWidget {
   State<_EditProfile> createState() => _EditProfileState();
 }
 
-class _EditProfileState extends State<_EditProfile> {
+class _EditProfileState extends State<_EditProfile>
+    with AutomaticKeepAliveClientMixin {
   late final Map<String, TextEditingController> _controllers;
-  bool _saved = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    final p = context.read<AppStateProvider>().profile;
+    final app = context.read<AppStateProvider>();
+    final p = app.profile;
     _controllers = {
       'lastName': TextEditingController(text: p.lastName),
       'firstName': TextEditingController(text: p.firstName),
-      'email': TextEditingController(text: p.email),
+      'email': TextEditingController(text: app.userEmail),
       'phone': TextEditingController(text: p.phone),
       'dob': TextEditingController(text: p.dob),
     };
@@ -320,75 +392,68 @@ class _EditProfileState extends State<_EditProfile> {
   void _save() {
     final app = context.read<AppStateProvider>();
     app.setProfile(UserProfile(
-      lastName: _controllers['lastName']!.text,
-      firstName: _controllers['firstName']!.text,
-      email: _controllers['email']!.text,
-      phone: _controllers['phone']!.text,
-      dob: _controllers['dob']!.text,
+      lastName: _controllers['lastName']!.text.trim(),
+      firstName: _controllers['firstName']!.text.trim(),
+      email: app.userEmail,
+      phone: _controllers['phone']!.text.trim(),
+      dob: _controllers['dob']!.text.trim(),
     ));
-    setState(() => _saved = true);
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _saved = false);
-    });
+    AppSnackBar.show(context, 'Đã lưu thay đổi');
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final app = context.read<AppStateProvider>();
-    final fields = [
-      (key: 'lastName', label: 'Họ', icon: Icons.person_outline, placeholder: 'Nguyen'),
-      (key: 'firstName', label: 'Tên', icon: Icons.person_outline, placeholder: 'Van A'),
-      (key: 'email', label: 'Email', icon: Icons.email_outlined, placeholder: 'user@email.com'),
-      (key: 'phone', label: 'Số điện thoại', icon: Icons.phone_outlined, placeholder: '0901 234 567'),
-      (key: 'dob', label: 'Ngày sinh', icon: Icons.calendar_today_outlined, placeholder: 'YYYY-MM-DD'),
-    ];
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
       children: [
         _buildBackHeader('Chỉnh sửa hồ sơ', () => app.setSettingsView(SettingsView.main)),
         const SizedBox(height: 16),
-        ...fields.map((f) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(f.icon, size: 12, color: const Color(0xFF666666)),
-                const SizedBox(width: 6),
-                Text(f.label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF666666))),
-              ]),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _controllers[f.key],
-                style: const TextStyle(fontSize: 14, color: AppColors.foreground),
-                decoration: InputDecoration(
-                  hintText: f.placeholder,
-                  hintStyle: const TextStyle(color: Color(0xFFBBBBBB)),
-                  filled: true, fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 2)),
-                ),
-              ),
-            ],
-          ),
-        )),
-        if (_saved)
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(16)),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check, size: 16, color: Colors.white),
-                SizedBox(width: 8),
-                Text('Đã lưu thay đổi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
-              ],
-            ),
-          ),
+        ProfileTextField(
+          key: const ValueKey('profile-lastName'),
+          controller: _controllers['lastName']!,
+          label: 'Họ',
+          icon: Icons.person_outline,
+          placeholder: 'Nguyễn',
+        ),
+        const SizedBox(height: 12),
+        ProfileTextField(
+          key: const ValueKey('profile-firstName'),
+          controller: _controllers['firstName']!,
+          label: 'Tên',
+          icon: Icons.person_outline,
+          placeholder: 'Văn A',
+          helper: 'Tên hiển thị — không phải username đăng nhập',
+        ),
+        const SizedBox(height: 12),
+        ProfileTextField(
+          key: const ValueKey('profile-email'),
+          controller: _controllers['email']!,
+          label: 'Thư điện tử',
+          icon: Icons.email_outlined,
+          placeholder: 'nguoi.dung@email.com',
+          helper: 'Email tài khoản — không đổi tại đây',
+          readOnly: true,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 12),
+        ProfileTextField(
+          key: const ValueKey('profile-phone'),
+          controller: _controllers['phone']!,
+          label: 'Số điện thoại',
+          icon: Icons.phone_outlined,
+          placeholder: '0901 234 567',
+          keyboardType: TextInputType.phone,
+        ),
+        const SizedBox(height: 12),
+        ProfileTextField(
+          key: const ValueKey('profile-dob'),
+          controller: _controllers['dob']!,
+          label: 'Ngày sinh',
+          icon: Icons.calendar_today_outlined,
+          placeholder: '01/01/1990',
+        ),
         const SizedBox(height: 20),
         _greenButton('Lưu thay đổi', _save),
       ],
@@ -410,7 +475,7 @@ class _ChangePasswordState extends State<_ChangePassword> {
   final _newPw = TextEditingController();
   final _confirmPw = TextEditingController();
   bool _showOld = false, _showNew = false, _showConfirm = false;
-  bool _saved = false;
+  bool _loading = false;
   String _error = '';
 
   static final _rules = [
@@ -432,30 +497,107 @@ class _ChangePasswordState extends State<_ChangePassword> {
   bool get _allPass => _rules.every((r) => r.test(_newPw.text));
   bool get _passwordsMatch => _newPw.text == _confirmPw.text && _confirmPw.text.isNotEmpty;
 
-  void _save() {
-    setState(() => _error = '');
-    if (_oldPw.text.isEmpty) { setState(() => _error = 'Vui lòng nhập mật khẩu cũ'); return; }
-    if (!_allPass) { setState(() => _error = 'Mật khẩu mới chưa đủ điều kiện'); return; }
-    if (!_passwordsMatch) { setState(() => _error = 'Mật khẩu xác nhận không khớp'); return; }
-    _oldPw.clear(); _newPw.clear(); _confirmPw.clear();
-    setState(() => _saved = true);
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _saved = false);
+  String _socialPasswordNote(AuthProviderType provider) {
+    switch (provider) {
+      case AuthProviderType.google:
+        return 'Bạn đang đăng nhập bằng Google. Mật khẩu được quản lý bởi Google — không thể đổi tại đây.';
+      case AuthProviderType.facebook:
+        return 'Bạn đang đăng nhập bằng Facebook. Mật khẩu được quản lý bởi Facebook — không thể đổi tại đây.';
+      case AuthProviderType.email:
+        return '';
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _error = '';
+      _loading = false;
     });
+    if (_oldPw.text.isEmpty) {
+      setState(() => _error = 'Vui lòng nhập mật khẩu cũ');
+      return;
+    }
+    if (!_allPass) {
+      setState(() => _error = 'Mật khẩu mới chưa đủ điều kiện');
+      return;
+    }
+    if (!_passwordsMatch) {
+      setState(() => _error = 'Mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    setState(() => _loading = true);
+    final change = context.read<ChangePasswordUseCase>();
+    final res = await change(
+      currentPassword: _oldPw.text,
+      newPassword: _newPw.text,
+    );
+    if (!mounted) return;
+
+    setState(() => _loading = false);
+    if (res.success) {
+      final app = context.read<AppStateProvider>();
+      final creds = app.savedCredentials;
+      if (creds != null) {
+        app.setSavedCredentials((email: creds.email, password: _newPw.text));
+      }
+      _oldPw.clear();
+      _newPw.clear();
+      _confirmPw.clear();
+      AppSnackBar.show(
+        context,
+        res.message ?? 'Đổi mật khẩu thành công!',
+        duration: const Duration(seconds: 2),
+      );
+      return;
+    }
+
+    setState(() => _error = res.message ?? 'Đổi mật khẩu thất bại.');
   }
 
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppStateProvider>();
+    final app = context.watch<AppStateProvider>();
+    final isSocial = app.isSocialAuth;
+    final fieldsEnabled = !isSocial;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
       children: [
         _buildBackHeader('Đổi mật khẩu', () => app.setSettingsView(SettingsView.main)),
         const SizedBox(height: 16),
-        _pwField('Mật khẩu cũ', _oldPw, _showOld, () => setState(() => _showOld = !_showOld), 'Nhập mật khẩu hiện tại'),
+        if (isSocial)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F5F5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEEEEEE)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  app.authProvider == AuthProviderType.google
+                      ? Icons.g_mobiledata
+                      : Icons.facebook,
+                  size: 18,
+                  color: const Color(0xFF999999),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _socialPasswordNote(app.authProvider),
+                    style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF666666)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        _pwField('Mật khẩu cũ', _oldPw, _showOld, () => setState(() => _showOld = !_showOld), 'Nhập mật khẩu hiện tại', enabled: fieldsEnabled),
         const SizedBox(height: 12),
-        _pwField('Mật khẩu mới', _newPw, _showNew, () => setState(() => _showNew = !_showNew), 'Nhập mật khẩu mới'),
-        if (_newPw.text.isNotEmpty) ...[
+        _pwField('Mật khẩu mới', _newPw, _showNew, () => setState(() => _showNew = !_showNew), 'Nhập mật khẩu mới', enabled: fieldsEnabled),
+        if (_newPw.text.isNotEmpty && fieldsEnabled) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -489,8 +631,9 @@ class _ChangePasswordState extends State<_ChangePassword> {
         ],
         const SizedBox(height: 12),
         _pwField('Xác nhận mật khẩu', _confirmPw, _showConfirm, () => setState(() => _showConfirm = !_showConfirm), 'Nhập lại mật khẩu mới',
-          errorBorder: _confirmPw.text.isNotEmpty && !_passwordsMatch),
-        if (_confirmPw.text.isNotEmpty && !_passwordsMatch)
+          enabled: fieldsEnabled,
+          errorBorder: fieldsEnabled && _confirmPw.text.isNotEmpty && !_passwordsMatch),
+        if (fieldsEnabled && _confirmPw.text.isNotEmpty && !_passwordsMatch)
           const Padding(padding: EdgeInsets.only(top: 4), child: Text('Mật khẩu xác nhận không khớp', style: TextStyle(fontSize: 11, color: Color(0xFFE57373)))),
         if (_error.isNotEmpty)
           Container(
@@ -503,138 +646,59 @@ class _ChangePasswordState extends State<_ChangePassword> {
               Expanded(child: Text(_error, style: const TextStyle(fontSize: 12, color: Color(0xFFE57373)))),
             ]),
           ),
-        if (_saved)
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(16)),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check, size: 16, color: Colors.white),
-                SizedBox(width: 8),
-                Text('Đã đổi mật khẩu thành công', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
-              ],
-            ),
-          ),
         const SizedBox(height: 20),
-        _greenButton('Đổi mật khẩu', _save, enabled: _allPass && _passwordsMatch && _oldPw.text.isNotEmpty),
+        _greenButton(
+          _loading ? 'Đang xử lý...' : 'Đổi mật khẩu',
+          _loading || isSocial ? null : _save,
+          enabled: fieldsEnabled && !_loading && _allPass && _passwordsMatch && _oldPw.text.isNotEmpty,
+        ),
       ],
     );
   }
 
-  Widget _pwField(String label, TextEditingController ctrl, bool visible, VoidCallback toggle, String hint, {bool errorBorder = false}) {
+  Widget _pwField(
+    String label,
+    TextEditingController ctrl,
+    bool visible,
+    VoidCallback toggle,
+    String hint, {
+    bool enabled = true,
+    bool errorBorder = false,
+  }) {
+    final labelColor = enabled ? const Color(0xFF666666) : const Color(0xFFBDBDBD);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: [
-          const Icon(Icons.lock_outline, size: 12, color: Color(0xFF666666)),
+          Icon(Icons.lock_outline, size: 12, color: labelColor),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF666666))),
+          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: labelColor)),
         ]),
         const SizedBox(height: 6),
         TextField(
           controller: ctrl,
+          enabled: enabled,
+          readOnly: !enabled,
           obscureText: !visible,
-          onChanged: (v) => setState(() {}),
-          style: const TextStyle(fontSize: 14, color: AppColors.foreground),
+          onChanged: enabled ? (_) => setState(() {}) : null,
+          style: TextStyle(fontSize: 14, color: enabled ? AppColors.foreground : AppColors.muted),
           decoration: InputDecoration(
-            hintText: hint, hintStyle: const TextStyle(color: Color(0xFFBBBBBB)),
-            filled: true, fillColor: Colors.white,
+            hintText: hint,
+            hintStyle: TextStyle(color: enabled ? const Color(0xFFBBBBBB) : const Color(0xFFD4D4D4)),
+            filled: true,
+            fillColor: enabled ? Colors.white : const Color(0xFFF5F5F5),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: errorBorder ? const Color(0xFFE57373) : AppColors.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: errorBorder ? const Color(0xFFE57373) : AppColors.border)),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: errorBorder ? const Color(0xFFE57373) : (enabled ? AppColors.border : const Color(0xFFEEEEEE)))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: errorBorder ? const Color(0xFFE57373) : (enabled ? AppColors.border : const Color(0xFFEEEEEE)))),
+            disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFEEEEEE))),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: errorBorder ? const Color(0xFFE57373) : AppColors.primary, width: 2)),
             suffixIcon: IconButton(
-              icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 16, color: const Color(0xFFBBBBBB)),
-              onPressed: toggle,
+              icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 16, color: enabled ? const Color(0xFFBBBBBB) : const Color(0xFFD4D4D4)),
+              onPressed: enabled ? toggle : null,
             ),
           ),
         ),
       ],
-    );
-  }
-}
-
-// ─────────────────── NOTIFICATIONS ───────────────────
-
-class _Notifications extends StatelessWidget {
-  const _Notifications({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppStateProvider>();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-      children: [
-        _buildBackHeader('Thông báo', () => app.setSettingsView(SettingsView.main)),
-        const SizedBox(height: 16),
-        _toggleCard(
-          icon: Icons.notifications_active, iconColor: AppColors.accent,
-          title: 'Cho phép gửi thông báo', subtitle: 'Nhận nhắc nhở thói quen hàng ngày',
-          value: app.notifSettings.pushEnabled,
-          onToggle: () => app.setNotifSettings(app.notifSettings.copyWith(pushEnabled: !app.notifSettings.pushEnabled)),
-        ),
-        const SizedBox(height: 12),
-        _toggleCard(
-          icon: Icons.volume_up, iconColor: const Color(0xFFE8A87C),
-          title: 'Âm thanh chuông báo', subtitle: 'Phát âm khi có thông báo mới',
-          value: app.notifSettings.soundEnabled,
-          onToggle: () => app.setNotifSettings(app.notifSettings.copyWith(soundEnabled: !app.notifSettings.soundEnabled)),
-        ),
-      ],
-    );
-  }
-
-  Widget _toggleCard({required IconData icon, required Color iconColor, required String title, required String subtitle, required bool value, required VoidCallback onToggle}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, size: 16, color: iconColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.foreground)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF999999))),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: onToggle,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 48, height: 28,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                color: value ? AppColors.primary : const Color(0xFFD4D4D4),
-              ),
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  width: 24, height: 24,
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white, boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 4)]),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -707,9 +771,26 @@ class _History extends StatelessWidget {
                       child: h.done ? const Icon(Icons.check, size: 10, color: Colors.white) : null,
                     ),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(h.text, style: TextStyle(fontSize: 12, color: h.done ? AppColors.primary : const Color(0xFF666666), decoration: h.done ? TextDecoration.lineThrough : null))),
+                    Expanded(
+                      child: Text(
+                        h.text,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: h.done ? AppColors.primary : const Color(0xFF666666),
+                          decoration: h.done ? TextDecoration.lineThrough : TextDecoration.none,
+                          decorationColor: AppColors.primary,
+                        ),
+                      ),
+                    ),
                   ]),
                 )),
+                if (record.energyLevel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Năng lượng: ${_energyLabel(record.energyLevel!)}',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Color(0xFF999999)),
+                  ),
+                ],
                 if (isPast) ...[
                   Container(height: 1, color: const Color(0xFFF0F0F0), margin: const EdgeInsets.symmetric(vertical: 8)),
                   Row(children: [
@@ -726,7 +807,7 @@ class _History extends StatelessWidget {
                     if (record.rating != null) ...[
                       const SizedBox(width: 8),
                       Text(
-                        record.rating == 5 ? 'Tuyệt vời' : record.rating! >= 3 ? 'On' : 'Cần cố gắng',
+                        record.rating == 5 ? 'Tuyệt vời' : record.rating! >= 3 ? 'Ổn' : 'Cần cố gắng',
                         style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFE8A87C)),
                       ),
                     ],
@@ -751,6 +832,17 @@ class _History extends StatelessWidget {
     if (d == null) return dateStr;
     const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
     return '${dayNames[d.weekday % 7]}, ${d.day}/${d.month}/${d.year}';
+  }
+
+  String _energyLabel(EnergyLevel level) {
+    switch (level) {
+      case EnergyLevel.low:
+        return 'Thấp';
+      case EnergyLevel.medium:
+        return 'Trung bình';
+      case EnergyLevel.high:
+        return 'Cao';
+    }
   }
 }
 
@@ -785,7 +877,7 @@ class _WalletState extends State<_Wallet> {
   static const _meta = {
     'momo': (label: 'Ví MoMo', color: Color(0xFFD63384), icon: '📱'),
     'bank': (label: 'Ngân hàng / Napas', color: Color(0xFF4A90C8), icon: '🏦'),
-    'visa': (label: 'Visa / Mastercard', color: Color(0xFF1A1F71), icon: '💳'),
+    'visa': (label: 'Thẻ Visa / Mastercard', color: Color(0xFF1A1F71), icon: '💳'),
   };
 
   @override

@@ -1,35 +1,63 @@
 # HealthPath (Flutter)
 
-Mobile app chuyển từ prototype web [`remove-companion`](../remove-companion/).
+## Cấu hình API — file `.env` (khuyến nghị)
 
-## Chạy (mock backend)
+Giống backend (`health_backend/.env`), app đọc **một file env** ở thư mục gốc project:
 
-**Android Studio:** mở folder `health` (có `pubspec.yaml`), không mở `health/android`. Run config **Flutter → main.dart**.
+```powershell
+cd d:\exe_project\health
+.\scripts\setup_env.ps1    # tạo .env từ .env.example (lần đầu)
+```
+
+Sửa `d:\exe_project\health\.env`:
+
+```env
+API_BASE_URL=https://10.0.2.2:7232
+JWT_ISSUER=healthpath
+```
+
+| Môi trường | `API_BASE_URL` gợi ý |
+|------------|----------------------|
+| Backend VS **https :7232** + Android Emulator | `https://10.0.2.2:7232` |
+| Backend **http :5048** + Emulator | `http://10.0.2.2:5048` |
+| Windows desktop (cùng máy backend) | `https://localhost:7232` |
+| Demo offline (mock) | để trống `API_BASE_URL=` |
+
+Sau đó chạy **bình thường** — Android Studio F5 / `flutter run` — **không cần** thêm `--dart-define`.
+
+Màn login: banner **xanh** = đã nối API, **cam** = offline.
+
+## Chạy nhanh
 
 ```powershell
 .\scripts\run_dev.ps1
 ```
 
-Hoặc:
+Hoặc ghi `.env` tự động theo platform rồi chạy:
 
 ```powershell
-flutter pub get
-flutter run --dart-define=API_BASE_URL= --dart-define=JWT_ISSUER=
+.\scripts\run_with_backend.ps1              # Android → 10.0.2.2:7232
+.\scripts\run_with_backend.ps1 -Platform windows
 ```
 
-**Windows:** bật [Developer Mode](https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development) nếu `flutter pub get` báo lỗi symlink.
+## Backend
 
-## Tài liệu
+Chạy API trước (Visual Studio F5 → `https://localhost:7232/swagger`).
 
-Xem [`healthpath-mobile-docs`](../healthpath-mobile-docs/README.md) — kiến trúc, backlog, test, rollback.
+## Auth API
 
-## Cấu trúc chính
+| App | Backend |
+|-----|---------|
+| Đăng ký | `POST /api/Auth/register` |
+| Đăng nhập | `POST /api/Auth/login` |
+| Google / Facebook | `POST /api/Auth/social-login` |
+| Khôi phục phiên | `GET /api/Users/me` |
 
-- `lib/core/` — config, theme, JWT, secure storage
-- `lib/features/` — auth, home, audio, team, settings, payment
-- `lib/companion/` — module chat tái sử dụng
-- `lib/shared/` — models, mock data, providers
+## Ghi đè khi build CI (tùy chọn)
+
+`--dart-define=API_BASE_URL=...` vẫn **ưu tiên hơn** `.env` nếu cần.
 
 ## Bảo mật
 
-Không commit file `.env` hay key thật. Production dùng `--dart-define` hoặc CI secrets — xem `.env.example`.
+- `.env` đã **gitignore** — không commit.
+- Chỉ commit `.env.example` (mẫu, không có secret thật).

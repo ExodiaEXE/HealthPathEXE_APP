@@ -746,6 +746,7 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 148,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
+              primary: false,
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, i) {

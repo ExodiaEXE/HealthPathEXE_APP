@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:health/core/config/env_config.dart';
 import 'package:health/core/constants/app_colors.dart';
+import 'package:health/core/navigation/app_navigator.dart';
 import 'package:health/domain/entities/subscription_entities.dart';
 import 'package:health/domain/usecases/subscription/subscription_usecases.dart';
 import 'package:health/features/subscription/services/play_billing_service.dart';
@@ -11,7 +12,7 @@ import 'package:health/features/subscription/services/subscription_billing_coord
 import 'package:health/shared/models/app_models.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
 import 'package:health/shared/widgets/app_snackbar.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:provider/provider.dart';
 
 class PaymentModal extends StatefulWidget {
@@ -27,7 +28,7 @@ class _PaymentModalState extends State<PaymentModal>
   late final Animation<Offset> _sheetSlide;
 
   List<SubscriptionPlanRecord> _plans = [];
-  final Map<String, ProductDetails> _storeProducts = {};
+  final Map<String, GooglePlayProductDetails> _storeProducts = {};
   String? _selectedProductId;
   bool _loading = true;
   bool _purchasing = false;
@@ -62,7 +63,16 @@ class _PaymentModalState extends State<PaymentModal>
 
   @override
   void dispose() {
-    SubscriptionBillingCoordinator.setHandlers();
+    final app = context.read<AppStateProvider>();
+    SubscriptionBillingCoordinator.setHandlers(
+      onSuccess: (result) async {
+        await app.applySubscriptionFromServer(result);
+      },
+      onError: (message) {
+        final ctx = AppNavigator.key.currentContext;
+        if (ctx != null) AppSnackBar.show(ctx, message);
+      },
+    );
     _sheetCtrl.dispose();
     super.dispose();
   }
@@ -83,18 +93,17 @@ class _PaymentModalState extends State<PaymentModal>
         .toList();
 
     _billingAvailable = await billing.isAvailable;
-    final productIds = plans
-        .map((p) => p.googleProductId!)
-        .toSet();
-
-    if (_billingAvailable && productIds.isNotEmpty) {
-      final response = await billing.queryProducts(productIds);
+    if (_billingAvailable) {
+      final response = await billing.querySubscriptionProducts();
       if (response.error != null && kDebugMode) {
         debugPrint('PlayBilling query error: ${response.error}');
       }
-      for (final product in response.productDetails) {
-        _storeProducts[product.id] = product;
+      if (response.notFoundIDs.isNotEmpty && kDebugMode) {
+        debugPrint('PlayBilling not found: ${response.notFoundIDs}');
       }
+      _storeProducts
+        ..clear()
+        ..addAll(PlayBillingService.indexProductsByBasePlanId(response.productDetails));
     }
 
     if (!mounted) return;
@@ -137,9 +146,11 @@ class _PaymentModalState extends State<PaymentModal>
     final app = context.read<AppStateProvider>();
     app.setPaymentStep(PaymentStep.processing);
 
+    SubscriptionBillingCoordinator.setPendingBasePlanId(productId);
     final billing = context.read<PlayBillingService>();
-    final started = await billing.purchase(product);
+    final started = await billing.purchaseSubscription(product);
     if (!started && mounted) {
+      SubscriptionBillingCoordinator.setPendingBasePlanId(null);
       setState(() => _purchasing = false);
       app.setPaymentStep(PaymentStep.plan);
       AppSnackBar.show(context, 'Không mở được màn hình thanh toán Google Play.');

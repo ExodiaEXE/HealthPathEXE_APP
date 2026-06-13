@@ -1,0 +1,7 @@
+# Copy to android/key.properties and fill in (DO NOT commit key.properties).
+# Generate keystore: powershell -File scripts/create_upload_keystore.ps1
+
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=healthpath-upload
+storeFile=app/upload-keystore.jks

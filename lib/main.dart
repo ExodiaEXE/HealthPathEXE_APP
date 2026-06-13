@@ -5,6 +5,7 @@ import 'package:health/app/session_bootstrap.dart';
 import 'package:health/core/config/env_config.dart';
 import 'package:health/core/di/app_dependencies.dart';
 import 'package:health/core/theme/app_theme.dart';
+import 'package:health/core/theme/hp_scroll_behavior.dart';
 import 'package:health/features/audio/services/audio_playback_coordinator.dart';
 import 'package:health/features/audio/services/native_pip_service.dart';
 import 'package:health/core/navigation/app_navigator.dart';
@@ -48,6 +49,7 @@ class HealthPathApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         theme: AppTheme.light(),
+        scrollBehavior: const HpScrollBehavior(),
         home: const SessionBootstrap(),
       ),
     );

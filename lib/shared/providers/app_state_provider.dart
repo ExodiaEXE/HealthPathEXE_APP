@@ -1695,8 +1695,8 @@ class AppStateProvider extends ChangeNotifier {
     if (sub != null && sub.isActive) {
       premiumInfo = PremiumInfo(
         productId: sub.billingCycle == 'yearly'
-            ? 'healthpath_premium_yearly'
-            : 'healthpath_premium_monthly',
+            ? 'healthpath-premium-yearly'
+            : 'healthpath-premium-monthly',
         productName: sub.planName,
         benefits: const [
           'Không quảng cáo',

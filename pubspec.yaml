@@ -1,7 +1,7 @@
 name: health
 description: HealthPath - Mobile wellness app (Flutter)
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.5+6
 
 environment:
   sdk: ^3.11.5
@@ -25,12 +25,14 @@ dependencies:
   firebase_messaging: ^15.2.5
   flutter_local_notifications: ^19.2.1
   web_socket_channel: ^3.0.3
-  model_viewer_plus: ^1.10.0
+  model_viewer_plus:
+    path: packages/model_viewer_plus
   google_sign_in: ^7.2.0
   flutter_facebook_auth: ^7.1.5
   url_launcher: ^6.3.2
   image_picker: ^1.1.2
   in_app_purchase: ^3.2.3
+  in_app_purchase_android: ^0.5.0
 
 dev_dependencies:
   flutter_test:

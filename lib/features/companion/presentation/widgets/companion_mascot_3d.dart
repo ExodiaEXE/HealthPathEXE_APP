@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:health/core/widgets/deferred_model_viewer_host.dart';
 import 'package:health/domain/entities/companion_entities.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
@@ -27,6 +28,7 @@ class _CompanionMascot3DState extends State<CompanionMascot3D> {
   bool _loaded = false;
   bool _failed = false;
   Timer? _timeout;
+  Timer? _loadDelay;
 
   @override
   void initState() {
@@ -41,13 +43,19 @@ class _CompanionMascot3DState extends State<CompanionMascot3D> {
   @override
   void dispose() {
     _timeout?.cancel();
+    _loadDelay?.cancel();
     super.dispose();
   }
 
   void _markLoaded() {
-    if (_loaded || _failed) return;
+    if (!mounted || _loaded || _failed) return;
     _timeout?.cancel();
-    if (mounted) setState(() => _loaded = true);
+    setState(() => _loaded = true);
+  }
+
+  void _onWebViewCreated(Object _) {
+    _loadDelay?.cancel();
+    _loadDelay = Timer(const Duration(seconds: 2), _markLoaded);
   }
 
   @override
@@ -66,23 +74,23 @@ class _CompanionMascot3DState extends State<CompanionMascot3D> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          ModelViewer(
-            key: ValueKey('${widget.assets.version}-$anim-$src'),
-            src: src,
-            alt: 'Mèo Xanh',
-            ar: false,
-            autoPlay: true,
-            autoRotate: idle,
-            cameraControls: false,
-            disablePan: true,
-            disableZoom: true,
-            disableTap: true,
-            animationName: anim,
-            backgroundColor: Colors.transparent,
-            loading: Loading.eager,
-            onWebViewCreated: (_) {
-              Future<void>.delayed(const Duration(seconds: 2), _markLoaded);
-            },
+          DeferredModelViewerHost(
+            builder: () => ModelViewer(
+              key: ValueKey('${widget.assets.version}-$anim-$src'),
+              src: src,
+              alt: 'Mèo Xanh',
+              ar: false,
+              autoPlay: true,
+              autoRotate: idle,
+              cameraControls: false,
+              disablePan: true,
+              disableZoom: true,
+              disableTap: true,
+              animationName: anim,
+              backgroundColor: Colors.transparent,
+              loading: Loading.eager,
+              onWebViewCreated: _onWebViewCreated,
+            ),
           ),
           if (!_loaded)
             const SizedBox(
@@ -110,18 +118,20 @@ class CompanionRoom3D extends StatelessWidget {
     if (url.isEmpty) return const SizedBox.shrink();
 
     return IgnorePointer(
-      child: ModelViewer(
-        src: url,
-        alt: 'Phòng',
-        ar: false,
-        autoPlay: false,
-        autoRotate: false,
-        cameraControls: false,
-        disablePan: true,
-        disableZoom: true,
-        disableTap: true,
-        backgroundColor: Colors.transparent,
-        loading: Loading.lazy,
+      child: DeferredModelViewerHost(
+        builder: () => ModelViewer(
+          src: url,
+          alt: 'Phòng',
+          ar: false,
+          autoPlay: false,
+          autoRotate: false,
+          cameraControls: false,
+          disablePan: true,
+          disableZoom: true,
+          disableTap: true,
+          backgroundColor: Colors.transparent,
+          loading: Loading.lazy,
+        ),
       ),
     );
   }

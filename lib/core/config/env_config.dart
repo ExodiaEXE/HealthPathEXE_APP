@@ -73,4 +73,10 @@ class EnvConfig {
   static bool get useMockBackend => apiBaseUrl.isEmpty;
 
   static bool get hasJwtConfig => apiBaseUrl.isNotEmpty && jwtIssuer.isNotEmpty;
+
+  /// Bật FCM chỉ khi đã có `android/app/google-services.json` (FlutterFire / Firebase Console).
+  static bool get fcmEnabled {
+    final v = _env('FCM_ENABLED').toLowerCase();
+    return v == 'true' || v == '1' || v == 'yes';
+  }
 }

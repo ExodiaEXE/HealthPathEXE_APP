@@ -1079,7 +1079,7 @@ class _WalletState extends State<_Wallet> {
 
   Future<void> _openManageSubscriptions() async {
     final uri = Uri.parse(
-      'https://play.google.com/store/account/subscriptions?package=com.example.health',
+      'https://play.google.com/store/account/subscriptions?package=com.exodiateam.healthpath',
     );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);

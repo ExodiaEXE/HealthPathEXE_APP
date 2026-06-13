@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:health/core/config/env_config.dart';
+import 'package:health/firebase_options.dart';
 
 /// Local notifications + FCM push (FCM tùy chọn khi có Firebase config).
 abstract final class PushNotificationService {
@@ -59,16 +61,28 @@ abstract final class PushNotificationService {
       return false;
     }
 
-    try {
-      await Firebase.initializeApp();
-      FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
-      FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleForegroundMessage);
-      _fcmReady = true;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('PushNotificationService: FCM skipped — $e');
+    if (EnvConfig.fcmEnabled) {
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+        FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+        FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+        FirebaseMessaging.onMessageOpenedApp.listen(_handleForegroundMessage);
+        _fcmReady = true;
+        if (kDebugMode) {
+          debugPrint('PushNotificationService: FCM initialized OK');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('PushNotificationService: FCM init failed — $e');
+        }
       }
+    } else if (kDebugMode) {
+      debugPrint(
+        'PushNotificationService: FCM tắt (local notifications vẫn dùng được). '
+        'Bật: thêm google-services.json + FCM_ENABLED=true trong .env',
+      );
     }
 
     return true;
@@ -78,6 +92,10 @@ abstract final class PushNotificationService {
     if (!_fcmReady) return null;
     try {
       if (Platform.isAndroid) {
+        await _local
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
         await FirebaseMessaging.instance.requestPermission();
       } else {
         await FirebaseMessaging.instance.requestPermission(
@@ -87,6 +105,11 @@ abstract final class PushNotificationService {
         );
       }
       _lastToken = await FirebaseMessaging.instance.getToken();
+      if (kDebugMode && _lastToken != null) {
+        debugPrint(
+          'PushNotificationService: FCM token ${_lastToken!.substring(0, 12)}...',
+        );
+      }
       return _lastToken;
     } catch (e) {
       if (kDebugMode) debugPrint('PushNotificationService: token failed — $e');
@@ -145,5 +168,7 @@ abstract final class PushNotificationService {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 }

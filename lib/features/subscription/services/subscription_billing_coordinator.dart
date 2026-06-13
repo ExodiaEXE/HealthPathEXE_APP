@@ -21,6 +21,12 @@ abstract final class SubscriptionBillingCoordinator {
   static StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   static bool _started = false;
   static final Set<String> _processedPurchaseIds = {};
+  static String? _pendingBasePlanId;
+
+  /// Base plan ID selected before opening the Play purchase sheet.
+  static void setPendingBasePlanId(String? basePlanId) {
+    _pendingBasePlanId = basePlanId;
+  }
 
   static void configure({
     required PlayBillingService billing,
@@ -81,12 +87,21 @@ abstract final class SubscriptionBillingCoordinator {
             continue;
           }
 
-          final billingCycle = purchase.productID.contains('yearly')
-              ? 'yearly'
-              : 'monthly';
+          final basePlanId = _pendingBasePlanId;
+          _pendingBasePlanId = null;
+
+          final billingCycle = basePlanId != null
+              ? PlayBillingService.billingCycleFromBasePlanId(basePlanId)
+              : (purchase.productID.contains('yearly') ? 'yearly' : 'monthly');
+
+          final verifyProductId =
+              purchase.productID == PlayBillingService.googleSubscriptionId ||
+                      purchase.productID.contains('healthpath')
+                  ? PlayBillingService.googleSubscriptionId
+                  : purchase.productID;
 
           final result = await verify(
-            productId: purchase.productID,
+            productId: verifyProductId,
             purchaseToken: token,
             billingCycle: billingCycle,
             transactionId: purchase.purchaseID,

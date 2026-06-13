@@ -317,9 +317,15 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleSocial(AppStateProvider app, AuthProviderType provider) async {
     final socialLogin = context.read<SocialLoginUseCase>();
     await _runAuth(() async {
-      final cred = await _social.signIn(provider);
+      final signIn = await _social.signIn(provider);
+      if (signIn.cancelled) return;
+      final cred = signIn.credential;
       if (cred == null) {
-        if (mounted) setState(() => _error = 'Không lấy được tài khoản.');
+        if (mounted) {
+          setState(
+            () => _error = signIn.message ?? 'Không lấy được tài khoản.',
+          );
+        }
         return;
       }
       final res = await socialLogin(

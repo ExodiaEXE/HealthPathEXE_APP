@@ -1,0 +1,6 @@
+Bundled 3D mascot (mascot.glb)
+Source: Khronos glTF Sample Assets — Fox model
+License: CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+Credit: PixelMannen / Khronos Group
+
+Replace with custom "Mèo Xanh" GLB on R2 when ready (Quaternius CC0 recommended).

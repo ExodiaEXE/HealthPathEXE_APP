@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HealthPath</string>
+    <!-- Web OAuth client — khớp GOOGLE_CLIENT_ID trong .env (serverClientId) -->
+    <string name="default_web_client_id">340998906895-9vtgmn1h93kfl19nndfp9h2rr90eovkq.apps.googleusercontent.com</string>
+    <!-- Facebook Login -->
+    <string name="facebook_app_id">1271647791434810</string>
+    <string name="fb_login_protocol_scheme">fb1271647791434810</string>
+    <!-- Client Token: Facebook App → Settings → Advanced → Client token -->
+    <string name="facebook_client_token">000e12769aea1dea64171479f8ba10eb</string>
+</resources>

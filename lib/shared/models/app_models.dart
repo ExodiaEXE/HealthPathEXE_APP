@@ -2,37 +2,20 @@ enum AuthState { login, register, authenticated }
 
 enum AuthProviderType { email, google, facebook }
 
-enum ActiveTab { home, audio, team, settings }
+enum ActiveTab { home, audio, companion, team, settings }
 
 enum EnergyLevel { low, medium, high }
 
-enum PaymentStep { plan, method, input, otp, processing, success }
-
-enum PaymentMethodType { momo, bank, visa }
+enum PaymentStep { plan, processing, success }
 
 enum SettingsView {
   main,
   editProfile,
   changePassword,
   notifications,
+  notificationInbox,
   history,
   wallet,
-}
-
-class SavedPaymentMethod {
-  const SavedPaymentMethod({
-    required this.id,
-    required this.type,
-    required this.label,
-    required this.maskedInfo,
-    this.detail,
-  });
-
-  final String id;
-  final PaymentMethodType type;
-  final String label;
-  final String maskedInfo;
-  final String? detail;
 }
 
 class PremiumInfo {
@@ -67,6 +50,22 @@ class HabitRecord {
   final List<HabitItem> habits;
   final EnergyLevel? energyLevel;
   final int? rating;
+
+  Map<String, dynamic> toJson() => {
+        'date': date,
+        'habits': habits.map((h) => h.toJson()).toList(),
+        if (energyLevel != null) 'energyLevel': energyLevel!.name,
+        if (rating != null) 'rating': rating,
+      };
+
+  factory HabitRecord.fromJson(Map<String, dynamic> json) => HabitRecord(
+        date: json['date'] as String? ?? '',
+        habits: (json['habits'] as List<dynamic>? ?? [])
+            .map((e) => HabitItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        energyLevel: _energyFromName(json['energyLevel'] as String?),
+        rating: json['rating'] as int?,
+      );
 }
 
 class HabitItem {
@@ -75,6 +74,26 @@ class HabitItem {
   final String id;
   final String text;
   final bool done;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        'done': done,
+      };
+
+  factory HabitItem.fromJson(Map<String, dynamic> json) => HabitItem(
+        id: json['id'] as String? ?? '',
+        text: json['text'] as String? ?? '',
+        done: json['done'] == true,
+      );
+}
+
+EnergyLevel? _energyFromName(String? value) {
+  if (value == null) return null;
+  for (final level in EnergyLevel.values) {
+    if (level.name == value) return level;
+  }
+  return null;
 }
 
 class UserProfile {
@@ -114,27 +133,59 @@ class UserProfile {
       email.isNotEmpty &&
       phone.isNotEmpty &&
       dob.isNotEmpty;
-}
 
-class NotifSettings {
-  const NotifSettings({this.pushEnabled = true, this.soundEnabled = true});
-
-  final bool pushEnabled;
-  final bool soundEnabled;
-
-  NotifSettings copyWith({bool? pushEnabled, bool? soundEnabled}) {
-    return NotifSettings(
-      pushEnabled: pushEnabled ?? this.pushEnabled,
-      soundEnabled: soundEnabled ?? this.soundEnabled,
-    );
+  /// Tên hiển thị (họ + tên) — không dùng username/email tài khoản.
+  String get displayName {
+    final full = '$lastName $firstName'.trim();
+    return full;
   }
+
+  Map<String, dynamic> toJson() => {
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'phone': phone,
+        'dob': dob,
+      };
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+        firstName: json['firstName'] as String? ?? '',
+        lastName: json['lastName'] as String? ?? '',
+        email: json['email'] as String? ?? 'user@healthpath.vn',
+        phone: json['phone'] as String? ?? '',
+        dob: json['dob'] as String? ?? '',
+      );
 }
 
 class RoutineItem {
-  const RoutineItem({required this.id, required this.text});
+  const RoutineItem({
+    required this.id,
+    required this.text,
+    this.category = 'other',
+  });
 
   final String id;
   final String text;
+  final String category;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        if (category != 'other') 'category': category,
+      };
+
+  factory RoutineItem.fromJson(Map<String, dynamic> json) => RoutineItem(
+        id: (json['id'] as String).toLowerCase(),
+        text: json['text'] as String,
+        category: (json['category'] as String?)?.toLowerCase() ?? 'other',
+      );
+
+  RoutineItem copyWith({String? id, String? text, String? category}) =>
+      RoutineItem(
+        id: id ?? this.id,
+        text: text ?? this.text,
+        category: category ?? this.category,
+      );
 }
 
 class RoutineSuggestion {

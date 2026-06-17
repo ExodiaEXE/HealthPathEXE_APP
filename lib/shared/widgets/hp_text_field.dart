@@ -36,6 +36,8 @@ class HpTextField extends StatelessWidget {
       keyboardType: keyboardType,
       onChanged: onChanged,
       textInputAction: textInputAction,
+      autocorrect: false,
+      enableSuggestions: false,
       style: AppTypography.body.copyWith(fontWeight: FontWeight.w600),
       decoration: InputDecoration(
         hintText: hint,

@@ -21,5 +21,23 @@ class JwtAuthService {
     await _storage.writeTokens(access: mockToken, refresh: 'mock_refresh');
   }
 
+  /// Persist a real JWT obtained from the backend.
+  Future<void> persistToken(String token) =>
+      _storage.writeTokens(access: token);
+
+  Future<String?> currentToken() => _storage.readAccessToken();
+
   Future<void> signOut() => _storage.clearTokens();
+
+  Future<void> persistLoginProvider({
+    required String email,
+    required String provider,
+  }) =>
+      _storage.writeLoginProvider(email, provider);
+
+  Future<String?> loginProviderFor(String email) =>
+      _storage.readLoginProvider(email);
+
+  Future<void> clearLoginProvider(String email) =>
+      _storage.clearLoginProvider(email);
 }

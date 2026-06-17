@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:health/core/constants/routine_catalog.dart';
@@ -35,6 +36,7 @@ import 'package:health/domain/usecases/wellness/wellness_content_usecase.dart';
 import 'package:health/core/persistence/group_local_store.dart';
 import 'package:health/core/persistence/team_checkin_local_store.dart';
 import 'package:health/features/notifications/services/notification_delivery_coordinator.dart';
+import 'package:health/features/subscription/services/subscription_billing_coordinator.dart';
 import 'package:health/shared/models/app_models.dart';
 
 /// Trạng thái presentation — chỉ gọi use case, không truy cập data trực tiếp.
@@ -219,6 +221,8 @@ class AppStateProvider extends ChangeNotifier {
   List<GroupRecord> publicGroups = [];
   GroupChallengeRecord? teamActiveChallenge;
   bool teamLoading = false;
+  bool teamDashboardLoading = false;
+  bool teamCheckInBusy = false;
   String? teamError;
   List<AudioTrackRecord> audioTracks = [];
   List<AudioCategoryRecord> audioCategories = [];
@@ -639,10 +643,16 @@ class AppStateProvider extends ChangeNotifier {
   int get currentWeekChallengePercent =>
       (currentWeekChallengeProgress * 100).round();
 
-  /// Ô ngày trên thẻ thử thách: có hoàn thành ít nhất 1 routine trong ngày.
-  List<bool> get currentWeekChallengeDayDone => currentWeekDailyRoutineStats
-      .map((d) => d.total > 0 && d.completed > 0)
-      .toList();
+  /// Ô ngày trên thẻ thử thách: điểm danh hoặc hoàn thành ít nhất 1 routine.
+  List<bool> get currentWeekChallengeDayDone {
+    final stats = currentWeekDailyRoutineStats;
+    return List.generate(7, (i) {
+      final checkedIn =
+          _teamWeekCheckInDates.contains(currentWeekDateKeys[i]);
+      final routineDone = stats[i].total > 0 && stats[i].completed > 0;
+      return checkedIn || routineDone;
+    });
+  }
 
   /// Điểm bảng xếp hạng tuần này (0–100).
   /// Mỗi ngày tối đa ~14.3 điểm: ~7.1 từ điểm danh + ~7.1 từ % routine hoàn thành.
@@ -908,6 +918,7 @@ class AppStateProvider extends ChangeNotifier {
         return;
       }
       audioTracks = trackRes.tracks ?? [];
+      _prefetchAudioStreamUrls(limit: 6);
     } catch (e) {
       if (kDebugMode) debugPrint('loadAudioCatalog: $e');
       audioError = 'Không tải được thư viện âm thanh.';
@@ -939,6 +950,23 @@ class AppStateProvider extends ChangeNotifier {
 
     _audioStreamCache[id] = res.stream!;
     return AudioOperationResult(success: true, stream: res.stream);
+  }
+
+  /// Lấy trước link stream để bấm phát không phải chờ API.
+  void _prefetchAudioStreamUrls({int limit = 5}) {
+    final getStream = _getAudioStreamUrl;
+    if (getStream == null || audioTracks.isEmpty) return;
+
+    final ids = audioTracks.take(limit).map((t) => t.id).toList();
+    unawaited(
+      Future.wait(
+        ids.map((id) async {
+          try {
+            await resolveAudioStream(id);
+          } catch (_) {}
+        }),
+      ),
+    );
   }
 
   Future<void> recordAudioListening({
@@ -1033,12 +1061,10 @@ class AppStateProvider extends ChangeNotifier {
           groups.any((g) => g.id == savedId.toLowerCase())) {
         final group = groups.firstWhere((g) => g.id == savedId.toLowerCase());
         _applyActiveGroup(group);
-        await refreshTeamDashboard();
       } else {
         final first = groups.first;
         await _groupLocalStore.saveActiveGroupId(userEmail, first.id);
         _applyActiveGroup(first);
-        await refreshTeamDashboard();
       }
     } catch (e) {
       if (kDebugMode) debugPrint('loadTeamState: $e');
@@ -1071,7 +1097,7 @@ class AppStateProvider extends ChangeNotifier {
       }
       _upsertMyTeam(res.group!);
       _applyActiveGroup(res.group!);
-      await refreshTeamDashboard();
+      unawaited(refreshTeamDashboard());
       return true;
     } catch (e) {
       if (kDebugMode) debugPrint('createTeam: $e');
@@ -1102,7 +1128,7 @@ class AppStateProvider extends ChangeNotifier {
       }
       _upsertMyTeam(res.group!);
       _applyActiveGroup(res.group!);
-      await refreshTeamDashboard();
+      unawaited(refreshTeamDashboard());
       return true;
     } catch (e) {
       if (kDebugMode) debugPrint('joinTeamById: $e');
@@ -1146,8 +1172,20 @@ class AppStateProvider extends ChangeNotifier {
 
   Future<void> openTeamGroup(GroupRecord group) async {
     _applyActiveGroup(group);
+    notifyListeners();
     await refreshTeamDashboard();
-    await _refreshTeamWeeklyStats();
+  }
+
+  /// Mở dashboard ngay với tên nhóm; tải chi tiết nền (gọi sau [openTeamGroup]).
+  void previewTeamGroup(GroupRecord group) {
+    if (teamGroupId != group.id) {
+      teamMembers = [];
+      teamActiveChallenge = null;
+      teamCheckInToday = false;
+      _teamWeekCheckInDates = {};
+    }
+    _applyActiveGroup(group);
+    teamDashboardLoading = true;
     notifyListeners();
   }
 
@@ -1158,10 +1196,11 @@ class AppStateProvider extends ChangeNotifier {
       _teamWeekCheckInDates = {};
       return;
     }
-    teamCheckInToday =
-        await _teamCheckinStore.hasCheckedInToday(userEmail, groupId);
     _teamWeekCheckInDates =
         await _teamCheckinStore.weekCheckInDates(userEmail, groupId);
+    teamCheckInToday = _teamWeekCheckInDates.contains(
+      TeamCheckinLocalStore.todayKey(),
+    );
   }
 
   void closeTeamDashboard() {
@@ -1227,25 +1266,31 @@ class AppStateProvider extends ChangeNotifier {
 
     final membersCase = _fetchGroupMembers;
     final challengesCase = _fetchGroupChallenges;
-    if (membersCase != null) {
-      final membersRes = await membersCase(groupId: groupId);
-      if (membersRes.success) {
-        teamMembers = membersRes.members ?? [];
-        teamMemberCount = teamMembers.length;
-      }
-    }
 
-    if (challengesCase != null) {
-      final challengeRes = await challengesCase(groupId: groupId);
-      if (challengeRes.success) {
-        final list = challengeRes.challenges ?? [];
-        teamActiveChallenge = list.isNotEmpty
-            ? list.firstWhere((c) => c.isActive, orElse: () => list.first)
-            : null;
-      }
-    }
+    teamDashboardLoading = true;
+    notifyListeners();
 
-    await _refreshTeamWeeklyStats();
+    await Future.wait([
+      if (membersCase != null)
+        membersCase(groupId: groupId).then((membersRes) {
+          if (membersRes.success) {
+            teamMembers = membersRes.members ?? [];
+            teamMemberCount = teamMembers.length;
+          }
+        }),
+      if (challengesCase != null)
+        challengesCase(groupId: groupId).then((challengeRes) {
+          if (challengeRes.success) {
+            final list = challengeRes.challenges ?? [];
+            teamActiveChallenge = list.isNotEmpty
+                ? list.firstWhere((c) => c.isActive, orElse: () => list.first)
+                : null;
+          }
+        }),
+      _refreshTeamWeeklyStats(),
+    ]);
+
+    teamDashboardLoading = false;
     notifyListeners();
   }
 
@@ -1652,6 +1697,18 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> syncSubscriptionFromServer() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      await SubscriptionBillingCoordinator.ensureStarted();
+      final reconciled =
+          await SubscriptionBillingCoordinator.reconcilePlayStoreWithBackend();
+      if (reconciled != null && reconciled.success) {
+        if (reconciled.subscription != null) {
+          _applySubscription(reconciled.subscription);
+          notifyListeners();
+        }
+      }
+    }
+
     final fetch = _fetchMySubscription;
     if (fetch == null) return;
     try {
@@ -1694,19 +1751,18 @@ class AppStateProvider extends ChangeNotifier {
     isPremium = sub?.isActive == true;
     if (sub != null && sub.isActive) {
       premiumInfo = PremiumInfo(
-        productId: sub.billingCycle == 'yearly'
-            ? 'healthpath-premium-yearly'
-            : 'healthpath-premium-monthly',
+        productId: 'healthpath-premium-monthly',
         productName: sub.planName,
         benefits: const [
-          'Không quảng cáo',
-          'Toàn bộ audio thư giãn',
-          'Hỗ trợ ưu tiên',
+          'Thư viện nhạc thư giãn Premium',
+          'Chất lượng phát Ổn định & Cao',
+          'Thói quen wellness Premium',
         ],
         amountVnd: 0,
         paidWith: sub.paymentProvider ?? 'Google Play',
         paidAt: sub.startedAt,
         expiresAt: sub.expiresAt ?? sub.startedAt.add(const Duration(days: 30)),
+        cancelledAt: sub.cancelledAt,
       );
     } else if (!isPremium) {
       premiumInfo = null;
@@ -1904,27 +1960,36 @@ class AppStateProvider extends ChangeNotifier {
 
   Future<String?> setTeamCheckInToday(bool v) async {
     if (!v) return null;
-    if (teamCheckInToday) return null;
+    if (teamCheckInToday || teamCheckInBusy) return null;
 
     final groupId = teamGroupId;
     if (groupId == null || groupId.isEmpty) {
       return 'Không xác định được nhóm. Hãy mở lại nhóm từ Quản lý nhóm.';
     }
 
-    final checkIn = _checkInGroup;
-    if (checkIn != null && checkIn.isOnline) {
-      final res = await checkIn(groupId: groupId);
-      if (!res.success) {
-        return res.message ?? 'Điểm danh nhóm thất bại.';
-      }
-    }
-
-    await _teamCheckinStore.recordCheckIn(userEmail, groupId);
-    _teamWeekCheckInDates =
-        await _teamCheckinStore.weekCheckInDates(userEmail, groupId);
-    teamCheckInToday = true;
-    await refreshTeamDashboard();
+    teamCheckInBusy = true;
     notifyListeners();
-    return null;
+
+    try {
+      final checkIn = _checkInGroup;
+      if (checkIn != null && checkIn.isOnline) {
+        final res = await checkIn(groupId: groupId);
+        if (!res.success) {
+          return res.message ?? 'Điểm danh nhóm thất bại.';
+        }
+      }
+
+      await _teamCheckinStore.recordCheckIn(userEmail, groupId);
+      _teamWeekCheckInDates =
+          await _teamCheckinStore.weekCheckInDates(userEmail, groupId);
+      teamCheckInToday = true;
+      notifyListeners();
+
+      unawaited(refreshTeamDashboard());
+      return null;
+    } finally {
+      teamCheckInBusy = false;
+      notifyListeners();
+    }
   }
 }

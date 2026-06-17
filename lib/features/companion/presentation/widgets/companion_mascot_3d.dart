@@ -11,12 +11,14 @@ class CompanionMascot3D extends StatefulWidget {
     super.key,
     required this.assets,
     required this.expression,
+    this.outfitEmojis = const [],
     this.onTap,
     this.onFailed,
   });
 
   final CompanionAssets assets;
   final String expression;
+  final List<String> outfitEmojis;
   final VoidCallback? onTap;
   final VoidCallback? onFailed;
 
@@ -97,6 +99,15 @@ class _CompanionMascot3DState extends State<CompanionMascot3D> {
               width: 24,
               height: 24,
               child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          if (_loaded && widget.outfitEmojis.isNotEmpty)
+            Positioned(
+              top: 24,
+              right: MediaQuery.sizeOf(context).width * 0.22,
+              child: Text(
+                widget.outfitEmojis.join(),
+                style: const TextStyle(fontSize: 32),
+              ),
             ),
         ],
       ),

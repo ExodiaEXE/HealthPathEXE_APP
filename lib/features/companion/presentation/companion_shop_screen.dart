@@ -139,20 +139,42 @@ class _CompanionShopScreenState extends State<CompanionShopScreen> {
           ),
           const SizedBox(height: 8),
           if (item.isOwned)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              alignment: Alignment.center,
-              child: const Text(
-                'Sở hữu',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
+            GestureDetector(
+              onTap: item.isEquipped
+                  ? null
+                  : () async {
+                      final ok = await companion.equipItem(item.sku);
+                      if (!context.mounted) return;
+                      if (ok) {
+                        AppSnackBar.show(
+                          context,
+                          companion.lastMessage ?? 'Đã trang bị!',
+                        );
+                        _load();
+                      } else {
+                        AppSnackBar.show(
+                          context,
+                          companion.lastMessage ?? 'Không trang bị được',
+                        );
+                      }
+                    },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: item.isEquipped
+                      ? AppColors.primary.withValues(alpha: 0.12)
+                      : AppColors.primary.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  item.isEquipped ? 'Đang dùng' : 'Trang bị',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: item.isEquipped ? AppColors.primary : Colors.white,
+                  ),
                 ),
               ),
             )

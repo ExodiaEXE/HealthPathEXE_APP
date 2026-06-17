@@ -27,6 +27,7 @@ class PremiumInfo {
     required this.paidWith,
     required this.paidAt,
     required this.expiresAt,
+    this.cancelledAt,
   });
 
   final String productId;
@@ -36,6 +37,9 @@ class PremiumInfo {
   final String paidWith;
   final DateTime paidAt;
   final DateTime expiresAt;
+  final DateTime? cancelledAt;
+
+  bool get isCancelledPendingExpiry => cancelledAt != null;
 }
 
 class HabitRecord {

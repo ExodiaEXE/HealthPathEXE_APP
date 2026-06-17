@@ -36,10 +36,10 @@ class _PaymentModalState extends State<PaymentModal>
   bool _billingAvailable = false;
 
   static const _benefits = [
-  ('Không quảng cáo', Icons.block, Color(0xFFE57373)),
-  ('Toàn bộ audio thư giãn', Icons.headphones, Color(0xFF4A90C8)),
-  ('Hỗ trợ ưu tiên', Icons.auto_awesome, Color(0xFFE8A87C)),
-];
+    ('Thư viện nhạc Premium', Icons.headphones, Color(0xFF4A90C8)),
+    ('Chất lượng phát Ổn định & Cao', Icons.graphic_eq, Color(0xFF7B68EE)),
+    ('Thói quen wellness Premium', Icons.self_improvement, Color(0xFFE8A87C)),
+  ];
 
   @override
   void initState() {
@@ -90,6 +90,7 @@ class _PaymentModalState extends State<PaymentModal>
     final plansResult = await fetchPlans();
     final plans = plansResult.plans
         .where((p) => p.googleProductId != null && p.googleProductId!.isNotEmpty)
+        .where((p) => !p.isYearly)
         .toList();
 
     _billingAvailable = await billing.isAvailable;
@@ -109,7 +110,12 @@ class _PaymentModalState extends State<PaymentModal>
     if (!mounted) return;
     setState(() {
       _plans = plans;
-      _selectedProductId ??= plans.isNotEmpty ? plans.first.googleProductId : null;
+      _selectedProductId ??= PlayBillingService.monthlyBasePlanId;
+      if (_selectedProductId != null &&
+          !plans.any((p) => p.googleProductId == _selectedProductId)) {
+        _selectedProductId =
+            plans.isNotEmpty ? plans.first.googleProductId : null;
+      }
       _loading = false;
       if (!plansResult.success && plans.isEmpty) {
         _error = plansResult.message ?? 'Không tải được gói đăng ký.';
@@ -148,33 +154,26 @@ class _PaymentModalState extends State<PaymentModal>
 
     SubscriptionBillingCoordinator.setPendingBasePlanId(productId);
     final billing = context.read<PlayBillingService>();
+
+    if (app.isPremium) {
+      SubscriptionBillingCoordinator.setPendingBasePlanId(null);
+      if (!mounted) return;
+      setState(() => _purchasing = false);
+      app.setPaymentStep(PaymentStep.plan);
+      AppSnackBar.show(
+        context,
+        'Bạn đã có gói Premium.',
+      );
+      return;
+    }
+
     final started = await billing.purchaseSubscription(product);
+
     if (!started && mounted) {
       SubscriptionBillingCoordinator.setPendingBasePlanId(null);
       setState(() => _purchasing = false);
       app.setPaymentStep(PaymentStep.plan);
       AppSnackBar.show(context, 'Không mở được màn hình thanh toán Google Play.');
-    }
-  }
-
-  Future<void> _restore() async {
-    if (!_billingAvailable) {
-      AppSnackBar.show(context, 'Google Play Billing chưa sẵn sàng trên thiết bị này.');
-      return;
-    }
-    setState(() => _purchasing = true);
-    final app = context.read<AppStateProvider>();
-    app.setPaymentStep(PaymentStep.processing);
-    await context.read<PlayBillingService>().restorePurchases();
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    await app.syncSubscriptionFromServer();
-    setState(() => _purchasing = false);
-    app.setPaymentStep(
-      app.isPremium ? PaymentStep.success : PaymentStep.plan,
-    );
-    if (!app.isPremium) {
-      AppSnackBar.show(context, 'Không tìm thấy gói đã mua trên tài khoản Google này.');
     }
   }
 
@@ -189,7 +188,7 @@ class _PaymentModalState extends State<PaymentModal>
     final result = await verify(
       productId: plan.googleProductId ?? plan.code,
       purchaseToken: 'mock_google_play_dev',
-      billingCycle: plan.isYearly ? 'yearly' : 'monthly',
+      billingCycle: 'monthly',
     );
     if (!mounted) return;
     if (result.success) {
@@ -351,14 +350,6 @@ class _PaymentModalState extends State<PaymentModal>
           _purchasing ? 'Đang xử lý...' : 'Đăng ký qua Google Play',
           _purchasing || _selectedProductId == null ? null : _subscribe,
         ),
-        const SizedBox(height: 10),
-        TextButton(
-          onPressed: _purchasing ? null : _restore,
-          child: const Text(
-            'Khôi phục gói đã mua',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
-          ),
-        ),
         if (kDebugMode && !_billingAvailable && EnvConfig.apiBaseUrl.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -387,10 +378,8 @@ class _PaymentModalState extends State<PaymentModal>
     final productId = plan.googleProductId!;
     final store = _storeProducts[productId];
     final selected = _selectedProductId == productId;
-    final priceLabel = store?.price ??
-        (plan.isYearly
-            ? '${_formatVnd(plan.priceYearly)} / năm'
-            : '${_formatVnd(plan.priceMonthly)} / tháng');
+    final priceLabel =
+        store?.price ?? '${_formatVnd(plan.priceMonthly)} / tháng';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

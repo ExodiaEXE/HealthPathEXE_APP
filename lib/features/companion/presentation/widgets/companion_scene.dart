@@ -32,7 +32,9 @@ class _CompanionSceneState extends State<CompanionScene>
   CompanionAssets get _assets => widget.assets ?? CompanionAssets.fallback;
 
   bool get _canUse3D =>
-      !_use3DFallback && _assets.enable3D && _assets.mascotGlbUrl.isNotEmpty;
+      !_use3DFallback &&
+      _assets.enable3D &&
+      _assets.effectiveMascotSrc.isNotEmpty;
 
   @override
   void initState() {
@@ -61,20 +63,12 @@ class _CompanionSceneState extends State<CompanionScene>
   @override
   Widget build(BuildContext context) {
     final theme = widget.state.roomTheme;
-    final bg = switch (theme) {
-      'modern' => const [Color(0xFFF4F6FA), Color(0xFFE8ECF4)],
-      'nature' => const [Color(0xFFF0F7F2), Color(0xFFE3F0E8)],
-      _ => const [Color(0xFFF8FAF8), Color(0xFFF0F4F0)],
-    };
-    final room3dUrl = _assets.roomUrlFor(theme) ?? '';
+    final roomImage = _assets.roomImageFor(theme);
+    final outfitEmojis =
+        CompanionCosmetics.outfitEmojis(widget.state.equippedItemSkus);
 
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: bg,
-        ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFEEEEEE)),
         boxShadow: const [
@@ -89,44 +83,77 @@ class _CompanionSceneState extends State<CompanionScene>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          if (room3dUrl.isNotEmpty && _canUse3D)
-            Positioned.fill(child: CompanionRoom3D(url: room3dUrl))
+          if (roomImage != null)
+            Positioned.fill(
+              child: Image.asset(
+                roomImage,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _roomBackdropFallback(theme),
+              ),
+            )
           else
-            _roomBackdrop(theme),
+            Positioned.fill(child: _roomBackdropFallback(theme)),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.05),
+                    Colors.black.withValues(alpha: 0.25),
+                  ],
+                ),
+              ),
+            ),
+          ),
           ..._furnitureLayer(),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: EdgeInsets.only(bottom: _canUse3D ? 4 : 12),
-              child: _canUse3D
-                  ? SizedBox(
-                      height: 220,
-                      width: double.infinity,
-                      child: CompanionMascot3D(
-                        assets: _assets,
-                        expression: widget.expression,
-                        onTap: widget.onTapPet,
-                        onFailed: () {
-                          if (mounted) setState(() => _use3DFallback = true);
-                        },
-                      ),
-                    )
-                  : GestureDetector(
-                      onTap: widget.onTapPet,
-                      child: AnimatedBuilder(
-                        animation: _bounce,
-                        builder: (context, child) {
-                          final dy = widget.expression == 'idle'
-                              ? math.sin(_bounce.value * math.pi) * 4
-                              : -8.0;
-                          return Transform.translate(
-                            offset: Offset(0, dy),
-                            child: child,
-                          );
-                        },
-                        child: _catMascot2D(widget.expression),
-                      ),
-                    ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.bottomCenter,
+                children: [
+                  _canUse3D
+                      ? SizedBox(
+                          height: 220,
+                          width: double.infinity,
+                          child: CompanionMascot3D(
+                            assets: _assets,
+                            expression: widget.expression,
+                            outfitEmojis: outfitEmojis,
+                            onTap: widget.onTapPet,
+                            onFailed: () {
+                              if (mounted) {
+                                setState(() => _use3DFallback = true);
+                              }
+                            },
+                          ),
+                        )
+                      : GestureDetector(
+                          onTap: widget.onTapPet,
+                          child: AnimatedBuilder(
+                            animation: _bounce,
+                            builder: (context, child) {
+                              final dy = widget.expression == 'idle'
+                                  ? math.sin(_bounce.value * math.pi) * 4
+                                  : -8.0;
+                              return Transform.translate(
+                                offset: Offset(0, dy),
+                                child: child,
+                              );
+                            },
+                            child: _catMascot2D(
+                              widget.expression,
+                              outfitEmojis: outfitEmojis,
+                            ),
+                          ),
+                        ),
+                ],
+              ),
             ),
           ),
         ],
@@ -134,10 +161,21 @@ class _CompanionSceneState extends State<CompanionScene>
     );
   }
 
-  Widget _roomBackdrop(String theme) {
-    return Positioned.fill(
-      child: CustomPaint(
-        painter: _RoomPainter(theme: theme),
+  Widget _roomBackdropFallback(String theme) {
+    final colors = switch (CompanionAssets.normalizeRoomTheme(theme)) {
+      'room_2' => const [Color(0xFFF4F6FA), Color(0xFFE8ECF4)],
+      'room_3' => const [Color(0xFFF0F7F2), Color(0xFFE3F0E8)],
+      'room_4' => const [Color(0xFFF7F2FA), Color(0xFFEDE4F4)],
+      _ => const [Color(0xFFF8FAF8), Color(0xFFF0F4F0)],
+    };
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: colors,
+        ),
       ),
     );
   }
@@ -177,7 +215,10 @@ class _CompanionSceneState extends State<CompanionScene>
     return items;
   }
 
-  Widget _catMascot2D(String expression) {
+  Widget _catMascot2D(
+    String expression, {
+    List<String> outfitEmojis = const [],
+  }) {
     final face = switch (expression) {
       'happy' || 'wave' => '😸',
       'eat' => '😋',
@@ -190,30 +231,45 @@ class _CompanionSceneState extends State<CompanionScene>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [Color(0xFF7BC67E), Color(0xFF3D7A2E)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF3D7A2E).withValues(alpha: 0.35),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+        Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF7BC67E), Color(0xFF3D7A2E)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF3D7A2E).withValues(alpha: 0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Text('🐾',
-                  style: TextStyle(fontSize: 18, color: Colors.white54)),
-              Text(face, style: const TextStyle(fontSize: 52)),
-            ],
-          ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Text('🐾',
+                      style: TextStyle(fontSize: 18, color: Colors.white54)),
+                  Text(face, style: const TextStyle(fontSize: 52)),
+                ],
+              ),
+            ),
+            if (outfitEmojis.isNotEmpty)
+              Positioned(
+                top: -4,
+                right: -8,
+                child: Text(
+                  outfitEmojis.join(),
+                  style: const TextStyle(fontSize: 28),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         Container(
@@ -234,41 +290,4 @@ class _CompanionSceneState extends State<CompanionScene>
       ],
     );
   }
-}
-
-class _RoomPainter extends CustomPainter {
-  _RoomPainter({required this.theme});
-  final String theme;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final wall = Paint()..color = const Color(0xFFEEF2EE).withValues(alpha: 0.9);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height * 0.65), wall);
-
-    final floor = Paint()..color = const Color(0xFFE4EBE4).withValues(alpha: 0.85);
-    canvas.drawRect(
-      Rect.fromLTWH(0, size.height * 0.62, size.width, size.height * 0.38),
-      floor,
-    );
-
-    final window = Paint()..color = const Color(0xFFD4E8F4).withValues(alpha: 0.75);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.55, size.height * 0.12, size.width * 0.32,
-            size.height * 0.28),
-        const Radius.circular(8),
-      ),
-      window,
-    );
-
-    final shelf = Paint()..color = const Color(0xFF3D7A2E).withValues(alpha: 0.12);
-    canvas.drawRect(
-      Rect.fromLTWH(size.width * 0.08, size.height * 0.38, size.width * 0.35, 6),
-      shelf,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RoomPainter oldDelegate) =>
-      oldDelegate.theme != theme;
 }

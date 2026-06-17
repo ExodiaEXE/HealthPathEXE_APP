@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:health/core/constants/app_colors.dart';
+import 'package:health/core/navigation/app_navigator.dart';
 import 'package:health/core/utils/social_account_links.dart';
+import 'package:health/domain/entities/subscription_entities.dart';
 import 'package:health/domain/usecases/auth/change_password_usecase.dart';
 import 'package:health/domain/usecases/auth/user_profile_usecases.dart';
-import 'package:health/domain/entities/subscription_entities.dart';
-import 'package:health/features/subscription/services/play_billing_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:health/features/settings/presentation/notification_views.dart';
@@ -1054,27 +1056,21 @@ class _WalletState extends State<_Wallet> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_refresh());
+    });
   }
 
   Future<void> _refresh() async {
-    setState(() => _loading = true);
-    final app = context.read<AppStateProvider>();
-    await app.syncSubscriptionFromServer();
-    await app.loadSubscriptionTransactions();
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _restore() async {
-    await context.read<PlayBillingService>().restorePurchases();
-    await Future<void>.delayed(const Duration(seconds: 2));
-    await _refresh();
     if (!mounted) return;
-    final app = context.read<AppStateProvider>();
-    AppSnackBar.show(
-      context,
-      app.isPremium ? 'Đã khôi phục gói đăng ký.' : 'Không tìm thấy gói trên tài khoản Google.',
-    );
+    setState(() => _loading = true);
+    try {
+      final app = context.read<AppStateProvider>();
+      await app.syncSubscriptionFromServer();
+      await app.loadSubscriptionTransactions();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _openManageSubscriptions() async {
@@ -1129,23 +1125,30 @@ class _WalletState extends State<_Wallet> {
                 ],
               ),
             ),
+          if (app.isPremium &&
+              app.activeSubscription?.isCancelledPendingExpiry == true) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFFCC80)),
+              ),
+              child: Text(
+                'Đã hủy gia hạn trên Google Play. Premium còn đến ${_fmtDt(app.activeSubscription!.expiresAt ?? app.premiumInfo!.expiresAt)} — sau đó chuyển về Miễn phí.',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF8D6E63), height: 1.4),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _restore,
-                  child: const Text('Khôi phục gói', style: TextStyle(fontSize: 12)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _openManageSubscriptions,
-                  child: const Text('Quản lý trên Play', style: TextStyle(fontSize: 12)),
-                ),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _openManageSubscriptions,
+              child: const Text('Quản lý trên Play', style: TextStyle(fontSize: 12)),
+            ),
           ),
           if (app.subscriptionTransactions.isNotEmpty) ...[
             const SizedBox(height: 24),
@@ -1226,6 +1229,29 @@ class _WalletState extends State<_Wallet> {
               ],
             )),
           ]),
+          if (info.isCancelledPendingExpiry) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: Color(0xFFE8A87C)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Đã hủy gia hạn — Premium còn đến ${_fmtDt(info.expiresAt)}',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF8D6E63)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),

@@ -4,21 +4,25 @@ import 'package:audio_session/audio_session.dart';
 import 'package:health/features/audio/services/audio_playback_quality.dart';
 import 'package:just_audio/just_audio.dart';
 
+/// Phát nhạc streaming — ưu tiên buffer + cache local, tránh rè/giật trên mạng di động.
 class AudioPlaybackService {
-  AudioPlaybackService({AudioPlaybackQuality quality = AudioPlaybackQuality.normal})
+  AudioPlaybackService({AudioPlaybackQuality quality = AudioPlaybackQuality.high})
       : _quality = quality,
         _player = _createPlayer(quality) {
     _bindPlayerStreams();
+    _bindStallGuard();
   }
 
   AudioPlaybackQuality _quality;
   AudioPlayer _player;
   String? _loadedUrl;
   bool _sessionReady = false;
+  bool _handlingStall = false;
 
   StreamSubscription<Duration>? _playerPosSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration?>? _playerDurSub;
+  StreamSubscription<ProcessingState>? _stallSub;
 
   final _positionRelay = StreamController<Duration>.broadcast();
   final _stateRelay = StreamController<PlayerState>.broadcast();
@@ -37,7 +41,10 @@ class AudioPlaybackService {
   Duration get bufferedPosition => _player.bufferedPosition;
   ProcessingState get processingState => _player.processingState;
 
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    await _ensureSession(active: true);
+    await _player.play();
+  }
 
   static AudioPlayer _createPlayer(AudioPlaybackQuality quality) {
     return AudioPlayer(
@@ -68,29 +75,62 @@ class AudioPlaybackService {
     }
   }
 
+  /// Khi buffer cạn giữa chừng — tạm dừng, nạp thêm rồi phát lại (tránh rè ExoPlayer).
+  void _bindStallGuard() {
+    _stallSub?.cancel();
+    _stallSub = _player.processingStateStream.listen((state) {
+      if (_handlingStall) return;
+      if (state != ProcessingState.buffering) return;
+      if (!_player.playing) return;
+
+      unawaited(_recoverFromStall());
+    });
+  }
+
+  Future<void> _recoverFromStall() async {
+    _handlingStall = true;
+    try {
+      await _player.pause();
+      await _waitUntilBufferedAhead(
+        _minBufferedFallback,
+        timeout: const Duration(seconds: 20),
+      );
+      if (_player.processingState == ProcessingState.ready) {
+        await _ensureSession(active: true);
+        await _player.play();
+      }
+    } catch (_) {
+      // Giữ pause — user có thể bấm play lại.
+    } finally {
+      _handlingStall = false;
+    }
+  }
+
   static AndroidLoadControl _androidLoadControl(AudioPlaybackQuality quality) {
     return switch (quality) {
       AudioPlaybackQuality.normal => const AndroidLoadControl(
-          minBufferDuration: Duration(seconds: 15),
-          maxBufferDuration: Duration(minutes: 1),
-          bufferForPlaybackDuration: Duration(seconds: 2),
-          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 4),
-          prioritizeTimeOverSizeThresholds: true,
+          minBufferDuration: Duration(seconds: 45),
+          maxBufferDuration: Duration(minutes: 6),
+          bufferForPlaybackDuration: Duration(seconds: 12),
+          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 16),
+          prioritizeTimeOverSizeThresholds: false,
+          backBufferDuration: Duration(seconds: 20),
         ),
       AudioPlaybackQuality.high => const AndroidLoadControl(
-          minBufferDuration: Duration(seconds: 30),
-          maxBufferDuration: Duration(minutes: 3),
-          bufferForPlaybackDuration: Duration(seconds: 6),
-          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 8),
-          prioritizeTimeOverSizeThresholds: true,
+          minBufferDuration: Duration(seconds: 60),
+          maxBufferDuration: Duration(minutes: 10),
+          bufferForPlaybackDuration: Duration(seconds: 16),
+          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 20),
+          prioritizeTimeOverSizeThresholds: false,
+          backBufferDuration: Duration(seconds: 40),
         ),
       AudioPlaybackQuality.lossless => const AndroidLoadControl(
-          minBufferDuration: Duration(seconds: 45),
-          maxBufferDuration: Duration(minutes: 5),
-          bufferForPlaybackDuration: Duration(seconds: 10),
-          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 12),
-          prioritizeTimeOverSizeThresholds: true,
-          backBufferDuration: Duration(seconds: 20),
+          minBufferDuration: Duration(seconds: 90),
+          maxBufferDuration: Duration(minutes: 12),
+          bufferForPlaybackDuration: Duration(seconds: 24),
+          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 30),
+          prioritizeTimeOverSizeThresholds: false,
+          backBufferDuration: Duration(seconds: 60),
         ),
     };
   }
@@ -99,45 +139,44 @@ class AudioPlaybackService {
     return switch (quality) {
       AudioPlaybackQuality.normal => const DarwinLoadControl(
           automaticallyWaitsToMinimizeStalling: true,
-          preferredForwardBufferDuration: Duration(seconds: 6),
+          preferredForwardBufferDuration: Duration(seconds: 45),
+          canUseNetworkResourcesForLiveStreamingWhilePaused: true,
         ),
       AudioPlaybackQuality.high => const DarwinLoadControl(
           automaticallyWaitsToMinimizeStalling: true,
-          preferredForwardBufferDuration: Duration(seconds: 20),
+          preferredForwardBufferDuration: Duration(seconds: 90),
+          canUseNetworkResourcesForLiveStreamingWhilePaused: true,
         ),
       AudioPlaybackQuality.lossless => const DarwinLoadControl(
           automaticallyWaitsToMinimizeStalling: true,
-          preferredForwardBufferDuration: Duration(seconds: 45),
+          preferredForwardBufferDuration: Duration(seconds: 120),
           canUseNetworkResourcesForLiveStreamingWhilePaused: true,
         ),
     };
   }
 
   Duration get _minBufferedBeforePlay => switch (_quality) {
-        AudioPlaybackQuality.normal => const Duration(seconds: 2),
-        AudioPlaybackQuality.high => const Duration(seconds: 6),
-        AudioPlaybackQuality.lossless => const Duration(seconds: 10),
+        AudioPlaybackQuality.normal => const Duration(seconds: 12),
+        AudioPlaybackQuality.high => const Duration(seconds: 16),
+        AudioPlaybackQuality.lossless => const Duration(seconds: 24),
       };
 
   Duration get _minBufferedFallback => switch (_quality) {
-        AudioPlaybackQuality.normal => Duration.zero,
-        AudioPlaybackQuality.high => const Duration(seconds: 3),
-        AudioPlaybackQuality.lossless => const Duration(seconds: 5),
+        AudioPlaybackQuality.normal => const Duration(seconds: 6),
+        AudioPlaybackQuality.high => const Duration(seconds: 8),
+        AudioPlaybackQuality.lossless => const Duration(seconds: 10),
       };
 
   Duration get loadTimeout => switch (_quality) {
-        AudioPlaybackQuality.normal => const Duration(seconds: 25),
-        AudioPlaybackQuality.high => const Duration(seconds: 45),
-        AudioPlaybackQuality.lossless => const Duration(seconds: 60),
+        AudioPlaybackQuality.normal => const Duration(seconds: 45),
+        AudioPlaybackQuality.high => const Duration(seconds: 60),
+        AudioPlaybackQuality.lossless => const Duration(seconds: 90),
       };
 
   AudioSource _sourceForUrl(String url) {
     final uri = Uri.parse(url);
-    if (_quality == AudioPlaybackQuality.normal) {
-      return AudioSource.uri(uri);
-    }
-    // Cache file local trước khi phát — giảm rè / giật trên Ổn định & Cao.
-    // ignore: experimental_member_use — just_audio chưa có API cache ổn định thay thế.
+    // Cache xuống disk trước khi/decode — giảm underrun trên CDN/R2.
+    // ignore: experimental_member_use
     return LockCachingAudioSource(uri);
   }
 
@@ -153,9 +192,11 @@ class AudioPlaybackService {
     }
 
     await _player.dispose();
+    _stallSub?.cancel();
     _quality = quality;
     _player = _createPlayer(quality);
     _bindPlayerStreams();
+    _bindStallGuard();
     _loadedUrl = null;
 
     if (url != null) {
@@ -163,22 +204,28 @@ class AudioPlaybackService {
     }
   }
 
-  Future<void> _ensureSession() async {
-    if (_sessionReady) return;
+  Future<void> _ensureSession({bool active = false}) async {
     final session = await AudioSession.instance;
-    await session.configure(
-      const AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.playback,
-        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.none,
-        avAudioSessionMode: AVAudioSessionMode.defaultMode,
-        androidAudioAttributes: AndroidAudioAttributes(
-          contentType: AndroidAudioContentType.music,
-          usage: AndroidAudioUsage.media,
+    if (!_sessionReady) {
+      await session.configure(
+        const AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.duckOthers,
+          avAudioSessionMode: AVAudioSessionMode.defaultMode,
+          androidAudioAttributes: AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.music,
+            usage: AndroidAudioUsage.media,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: false,
         ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
-      ),
-    );
-    _sessionReady = true;
+      );
+      _sessionReady = true;
+    }
+    if (active) {
+      await session.setActive(true);
+    }
   }
 
   Future<void> loadAndPlay(
@@ -186,11 +233,50 @@ class AudioPlaybackService {
     Duration resumePosition = Duration.zero,
     bool autoPlay = true,
   }) async {
-    await _ensureSession();
+    await _ensureSession(active: autoPlay);
 
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await _loadSource(
+          url,
+          resumePosition: resumePosition,
+          autoPlay: false,
+        );
+        await _waitUntilReady();
+        await _waitUntilBufferedAhead(
+          _minBufferedBeforePlay,
+          timeout: loadTimeout,
+        );
+        if (autoPlay) {
+          await _player.play();
+        }
+        return;
+      } on TimeoutException catch (e) {
+        lastError = e;
+        await _resetPlayerSource();
+        if (attempt == 1) rethrow;
+      } catch (e) {
+        lastError = e;
+        await _resetPlayerSource();
+        if (attempt == 1) rethrow;
+      }
+    }
+    if (lastError != null) {
+      throw lastError;
+    }
+  }
+
+  Future<void> _loadSource(
+    String url, {
+    Duration resumePosition = Duration.zero,
+    bool autoPlay = true,
+  }) async {
     final reload = _loadedUrl != url;
     if (reload) {
-      await _player.stop();
+      if (_player.playing) {
+        await _player.pause();
+      }
       await _player.setAudioSource(
         _sourceForUrl(url),
         initialPosition: resumePosition,
@@ -201,12 +287,16 @@ class AudioPlaybackService {
       await _player.seek(resumePosition);
     }
 
-    await _waitUntilReady();
-    await _waitUntilBufferedAhead(_minBufferedBeforePlay);
-
-    if (autoPlay) {
+    if (autoPlay && !reload) {
       await _player.play();
     }
+  }
+
+  Future<void> _resetPlayerSource() async {
+    try {
+      await _player.stop();
+    } catch (_) {}
+    _loadedUrl = null;
   }
 
   Future<void> _waitUntilReady() async {
@@ -225,10 +315,14 @@ class AudioPlaybackService {
     return ahead.isNegative ? Duration.zero : ahead;
   }
 
-  Future<void> _waitUntilBufferedAhead(Duration minimumAhead) async {
+  Future<void> _waitUntilBufferedAhead(
+    Duration minimumAhead, {
+    Duration? timeout,
+  }) async {
     if (minimumAhead <= Duration.zero) return;
     if (_bufferedAhead() >= minimumAhead) return;
 
+    final waitTimeout = timeout ?? loadTimeout;
     final completer = Completer<void>();
     late final StreamSubscription<Duration> posSub;
     late final StreamSubscription<Duration> bufSub;
@@ -243,11 +337,10 @@ class AudioPlaybackService {
 
     posSub = _player.positionStream.listen((_) => check());
     bufSub = _player.bufferedPositionStream.listen((_) => check());
-    timeoutTimer = Timer(loadTimeout, () {
+    timeoutTimer = Timer(waitTimeout, () {
       if (completer.isCompleted) return;
 
-      final fallback = _minBufferedFallback;
-      if (fallback <= Duration.zero || _bufferedAhead() >= fallback) {
+      if (_bufferedAhead() >= _minBufferedFallback) {
         completer.complete();
         return;
       }
@@ -270,6 +363,7 @@ class AudioPlaybackService {
     if (_player.playing) {
       await _player.pause();
     } else {
+      await _ensureSession(active: true);
       await _player.play();
     }
   }
@@ -285,11 +379,19 @@ class AudioPlaybackService {
       _player.setSpeed(speed.clamp(0.5, 2.0));
 
   Future<void> stop() async {
-    await _player.stop();
+    try {
+      await _player.stop();
+    } catch (_) {
+      try {
+        await _player.pause();
+        await _player.seek(Duration.zero);
+      } catch (_) {}
+    }
     _loadedUrl = null;
   }
 
   Future<void> dispose() async {
+    await _stallSub?.cancel();
     await _playerPosSub?.cancel();
     await _playerStateSub?.cancel();
     await _playerDurSub?.cancel();

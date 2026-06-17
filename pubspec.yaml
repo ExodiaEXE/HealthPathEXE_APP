@@ -1,7 +1,7 @@
 name: health
 description: HealthPath - Mobile wellness app (Flutter)
 publish_to: 'none'
-version: 1.0.5+6
+version: 1.0.16+18
 
 environment:
   sdk: ^3.11.5
@@ -38,6 +38,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/app_icon.jpg
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/branding/app_icon.jpg
+  remove_alpha_ios: true
 
 # path_provider_android 2.3+ dùng JNI và gây lỗi dart_api.h trên một số bản Flutter/NDK.
 # App không dùng path_provider trực tiếp — chỉ kéo theo từ flutter_secure_storage (Windows).
@@ -51,3 +60,7 @@ flutter:
     - .env.example
     - assets/companion/mascot.glb
     - assets/companion/LICENSE.txt
+    - assets/companion/rooms/room_1.jpg
+    - assets/companion/rooms/room_2.jpg
+    - assets/companion/rooms/room_3.jpg
+    - assets/companion/rooms/room_4.jpg

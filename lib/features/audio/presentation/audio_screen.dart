@@ -33,8 +33,8 @@ class AudioScreen extends StatefulWidget {
 
 class _AudioScreenState extends State<AudioScreen>
     with TickerProviderStateMixin {
-  /// Bật `true` khi gắn subscription — khóa Ổn định / Cao cho user chưa premium.
-  static const _qualityRequiresPremium = false;
+  /// Khóa Ổn định / Cao cho user chưa premium.
+  static const _qualityRequiresPremium = true;
 
   WellnessContentUseCase get _wellness =>
       context.read<AppStateProvider>().wellness;
@@ -105,6 +105,7 @@ class _AudioScreenState extends State<AudioScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = context.read<AppStateProvider>();
+      _syncQualityForPremium(app.isPremium);
       if (app.audioTracks.isEmpty && !app.audioLoading) {
         unawaited(app.loadAudioCatalog());
       }
@@ -120,6 +121,12 @@ class _AudioScreenState extends State<AudioScreen>
 
     AudioPlaybackDelegate.trackIdNotifier.addListener(_onExternalTrackChange);
     AudioPlaybackDelegate.openDetailView = _openDetailFromDelegate;
+    context.read<AppStateProvider>().addListener(_onAppPremiumChanged);
+  }
+
+  void _onAppPremiumChanged() {
+    if (!mounted) return;
+    _syncQualityForPremium(context.read<AppStateProvider>().isPremium);
   }
 
   void _openDetailFromDelegate() {
@@ -130,6 +137,22 @@ class _AudioScreenState extends State<AudioScreen>
       _showDetail = true;
       _showFavorites = false;
     });
+  }
+
+  void _syncQualityForPremium(bool isPremium) {
+    if (!_qualityRequiresPremium) return;
+    if (isPremium) {
+      if (_quality == 'normal') {
+        setState(() => _quality = 'high');
+        unawaited(_playback.setQuality(AudioPlaybackQuality.high));
+        _syncBridgeSettings();
+      }
+      return;
+    }
+    if (_quality == 'normal') return;
+    setState(() => _quality = 'normal');
+    unawaited(_playback.setQuality(AudioPlaybackQuality.normal));
+    _syncBridgeSettings();
   }
 
   void _syncBridgeSettings() {
@@ -244,6 +267,7 @@ class _AudioScreenState extends State<AudioScreen>
     _durSub?.cancel();
     _stateSub?.cancel();
     AudioPlaybackDelegate.trackIdNotifier.removeListener(_onExternalTrackChange);
+    context.read<AppStateProvider>().removeListener(_onAppPremiumChanged);
     if (AudioPlaybackDelegate.openDetailView == _openDetailFromDelegate) {
       AudioPlaybackDelegate.openDetailView = null;
     }
@@ -360,7 +384,7 @@ class _AudioScreenState extends State<AudioScreen>
       final streamRes = await app
           .resolveAudioStream(track.id)
           .timeout(
-            const Duration(seconds: 12),
+            const Duration(seconds: 20),
             onTimeout: () => AudioOperationResult.fail(
               'Kết nối chậm. Vui lòng thử lại sau.',
             ),
@@ -393,7 +417,6 @@ class _AudioScreenState extends State<AudioScreen>
         return;
       }
 
-      await _playback.stop();
       final quality = AudioPlaybackQuality.fromKey(_quality);
       if (_playback.quality != quality) {
         await _playback.setQuality(quality);
@@ -441,7 +464,6 @@ class _AudioScreenState extends State<AudioScreen>
     if (tracks.isEmpty) return;
     final currentIdx = tracks.indexWhere((t) => t.id == _currentTrackId);
     final newIdx = (currentIdx - 1 + tracks.length) % tracks.length;
-    await _playback.stop();
     await _playTrack(tracks[newIdx]);
   }
 
@@ -450,7 +472,6 @@ class _AudioScreenState extends State<AudioScreen>
     if (tracks.isEmpty) return;
     final currentIdx = tracks.indexWhere((t) => t.id == _currentTrackId);
     final newIdx = (currentIdx + 1) % tracks.length;
-    await _playback.stop();
     await _playTrack(tracks[newIdx]);
   }
 

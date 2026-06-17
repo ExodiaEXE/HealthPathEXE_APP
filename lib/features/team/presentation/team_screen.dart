@@ -537,13 +537,6 @@ class _TeamScreenState extends State<TeamScreen> {
             ],
           ),
         ),
-        if (_openingGroupId != null)
-          Positioned.fill(
-            child: ColoredBox(
-              color: Colors.black.withValues(alpha: 0.08),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-          ),
       ],
     );
   }
@@ -583,13 +576,18 @@ class _TeamScreenState extends State<TeamScreen> {
         onTap: _openingGroupId != null
             ? null
             : () async {
-                setState(() => _openingGroupId = group.id);
-                await context.read<AppStateProvider>().openTeamGroup(group);
-                if (!mounted) return;
+                final app = context.read<AppStateProvider>();
+                app.previewTeamGroup(group);
                 setState(() {
-                  _openingGroupId = null;
+                  _openingGroupId = group.id;
                   _teamPage = 'dashboard';
                 });
+                unawaited(
+                  app.refreshTeamDashboard().whenComplete(() {
+                    if (!mounted) return;
+                    setState(() => _openingGroupId = null);
+                  }),
+                );
               },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -889,7 +887,7 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: app.teamLoading
+          onTap: app.teamLoading || app.teamCheckInBusy
               ? null
               : () async {
                   if (app.teamCheckInToday) return;
@@ -1109,6 +1107,30 @@ class _TeamScreenState extends State<TeamScreen> {
   // ─── LEADERBOARD ────────────────────────────────────────────────────────────
 
   Widget _buildLeaderboard(AppStateProvider app) {
+    if (app.teamDashboardLoading && app.teamMembers.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'BẢNG XẾP HẠNG',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 12),
+          ...List.generate(
+            3,
+            (_) => Container(
+              height: 48,
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     final useApi = app.teamMembers.isNotEmpty;
     final mockMembers = List.of(_content.teamMembers);
 

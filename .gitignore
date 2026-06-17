@@ -44,6 +44,15 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Play / local build outputs
+/release/
+*.aab
+*.apk
+*.ipa
+
+# Flutter generated (local machine)
+.flutter-plugins
+
 # Secrets — never commit
 .env
 .env.*

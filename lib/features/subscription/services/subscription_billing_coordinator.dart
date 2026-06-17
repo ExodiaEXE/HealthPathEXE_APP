@@ -20,6 +20,7 @@ abstract final class SubscriptionBillingCoordinator {
   static SubscriptionPurchaseErrorHandler? _onError;
   static StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   static bool _started = false;
+  static bool _reconcileRunning = false;
   static final Set<String> _processedPurchaseIds = {};
   static String? _pendingBasePlanId;
 
@@ -59,6 +60,67 @@ abstract final class SubscriptionBillingCoordinator {
     _started = true;
   }
 
+  /// Queries Google Play for active purchases and verifies with backend.
+  /// Returns verify result without triggering UI handlers unless [notifyHandlers].
+  static Future<SubscriptionOperationResult?> reconcilePlayStoreWithBackend({
+    bool notifyHandlers = false,
+  }) async {
+    if (_reconcileRunning) return null;
+
+    final billing = _billing;
+    final verify = _verify;
+    if (billing == null || verify == null) return null;
+    if (!await billing.isAvailable) return null;
+
+    _reconcileRunning = true;
+    try {
+      final purchases = await billing.querySubscriptionPurchases();
+      if (purchases.isEmpty) return null;
+
+      for (final purchase in purchases) {
+        final token = PlayBillingService.purchaseToken(purchase);
+        if (token == null || token.isEmpty) continue;
+        if (_wasProcessed(purchase, token)) continue;
+
+        final billingCycle = PlayBillingService.billingCycleFromPurchase(purchase);
+        final result = await verify(
+          productId: PlayBillingService.googleSubscriptionId,
+          purchaseToken: token,
+          billingCycle: billingCycle,
+          transactionId: purchase.purchaseID,
+        );
+
+        if (result.success) {
+          _rememberProcessedPurchase(purchase, token);
+          if (purchase.pendingCompletePurchase) {
+            await billing.completePurchase(purchase);
+          }
+          if (notifyHandlers) {
+            await _onSuccess?.call(result);
+          }
+          return result;
+        }
+      }
+    } finally {
+      _reconcileRunning = false;
+    }
+
+    return null;
+  }
+
+  static void _rememberProcessedPurchase(
+    PurchaseDetails purchase,
+    String token,
+  ) {
+    final purchaseId = purchase.purchaseID ?? purchase.productID;
+    _processedPurchaseIds.add('$purchaseId:$token');
+  }
+
+  static bool _wasProcessed(PurchaseDetails purchase, String token) {
+    final purchaseId = purchase.purchaseID ?? purchase.productID;
+    return _processedPurchaseIds.contains('$purchaseId:$token');
+  }
+
   static Future<void> _handlePurchases(List<PurchaseDetails> purchases) async {
     final billing = _billing;
     final verify = _verify;
@@ -78,21 +140,19 @@ abstract final class SubscriptionBillingCoordinator {
           continue;
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          final purchaseId = purchase.purchaseID ?? purchase.productID;
-          if (_processedPurchaseIds.contains(purchaseId)) continue;
-
           final token = PlayBillingService.purchaseToken(purchase);
           if (token == null || token.isEmpty) {
             _onError?.call('Không lấy được mã xác thực từ Google Play.');
             continue;
           }
+          if (_wasProcessed(purchase, token)) continue;
 
           final basePlanId = _pendingBasePlanId;
           _pendingBasePlanId = null;
 
-          final billingCycle = basePlanId != null
-              ? PlayBillingService.billingCycleFromBasePlanId(basePlanId)
-              : (purchase.productID.contains('yearly') ? 'yearly' : 'monthly');
+          final billingCycle = PlayBillingService.billingCycleFromBasePlanId(
+            basePlanId ?? PlayBillingService.monthlyBasePlanId,
+          );
 
           final verifyProductId =
               purchase.productID == PlayBillingService.googleSubscriptionId ||
@@ -108,7 +168,7 @@ abstract final class SubscriptionBillingCoordinator {
           );
 
           if (result.success) {
-            _processedPurchaseIds.add(purchaseId);
+            _rememberProcessedPurchase(purchase, token);
             if (purchase.pendingCompletePurchase) {
               await billing.completePurchase(purchase);
             }

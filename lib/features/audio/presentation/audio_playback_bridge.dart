@@ -66,7 +66,7 @@ class _AudioPlaybackBridgeState extends State<AudioPlaybackBridge> {
 
     try {
       final streamRes = await app.resolveAudioStream(track.id).timeout(
-            const Duration(seconds: 12),
+            const Duration(seconds: 20),
             onTimeout: () => AudioOperationResult.fail(
               'Kết nối chậm. Vui lòng thử lại sau.',
             ),
@@ -82,8 +82,6 @@ class _AudioPlaybackBridgeState extends State<AudioPlaybackBridge> {
       if (playbackUrl.isEmpty) return;
 
       final playback = AudioPlaybackCoordinator.playback;
-      await playback.stop();
-
       final quality = AudioPlaybackQuality.fromKey(_quality);
       if (playback.quality != quality) {
         await playback.setQuality(quality);

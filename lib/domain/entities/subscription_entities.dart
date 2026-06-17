@@ -66,6 +66,7 @@ class UserSubscriptionRecord {
     required this.billingCycle,
     required this.startedAt,
     this.expiresAt,
+    this.cancelledAt,
     this.paymentProvider,
     required this.isActive,
   });
@@ -76,8 +77,12 @@ class UserSubscriptionRecord {
   final String billingCycle;
   final DateTime startedAt;
   final DateTime? expiresAt;
+  final DateTime? cancelledAt;
   final String? paymentProvider;
   final bool isActive;
+
+  bool get isCancelledPendingExpiry =>
+      cancelledAt != null && isActive;
 
   factory UserSubscriptionRecord.fromJson(Map<String, dynamic> json) {
     return UserSubscriptionRecord(
@@ -89,6 +94,9 @@ class UserSubscriptionRecord {
           DateTime.now(),
       expiresAt: json['expiresAt'] != null
           ? DateTime.tryParse(json['expiresAt'] as String)
+          : null,
+      cancelledAt: json['cancelledAt'] != null
+          ? DateTime.tryParse(json['cancelledAt'] as String)
           : null,
       paymentProvider: json['paymentProvider'] as String?,
       isActive: json['isActiveSubscription'] == true,

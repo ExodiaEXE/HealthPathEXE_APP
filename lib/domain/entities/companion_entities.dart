@@ -44,7 +44,7 @@ class CompanionState {
       hunger: json['hunger'] as int? ?? 70,
       happiness: json['happiness'] as int? ?? 80,
       energy: json['energy'] as int? ?? 90,
-      roomTheme: json['roomTheme'] as String? ?? 'cozy',
+      roomTheme: json['roomTheme'] as String? ?? 'room_1',
       equippedItemSkus: (json['equippedItemSkus'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
@@ -67,7 +67,7 @@ class CompanionState {
     hunger: 70,
     happiness: 80,
     energy: 90,
-    roomTheme: 'cozy',
+    roomTheme: 'room_1',
     equippedItemSkus: [],
     canFeed: true,
     canPet: true,
@@ -247,7 +247,26 @@ class CompanionAssets {
   String animationFor(String expression) =>
       mascotAnimations[expression] ?? mascotAnimations['idle'] ?? 'Survey';
 
-  String? roomUrlFor(String theme) => roomSceneUrls[theme];
+  String? roomUrlFor(String theme) => roomSceneUrls[normalizeRoomTheme(theme)];
+
+  /// Maps legacy backend themes (cozy/modern/nature) to room image keys.
+  static String normalizeRoomTheme(String theme) => switch (theme) {
+        'cozy' => 'room_1',
+        'modern' => 'room_2',
+        'nature' => 'room_3',
+        _ => theme,
+      };
+
+  /// Room background image assets — room_1..room_4.
+  static const roomImageAssets = {
+    'room_1': 'assets/companion/rooms/room_1.jpg',
+    'room_2': 'assets/companion/rooms/room_2.jpg',
+    'room_3': 'assets/companion/rooms/room_3.jpg',
+    'room_4': 'assets/companion/rooms/room_4.jpg',
+  };
+
+  String? roomImageFor(String theme) =>
+      roomImageAssets[normalizeRoomTheme(theme)];
 
   /// GLB nhúng trong app — không cần CDN/R2 để chạy 3D.
   static const bundledMascotAsset = 'assets/companion/mascot.glb';
@@ -278,13 +297,55 @@ class CompanionAssets {
     mascotGlbUrl: bundledMascotAsset,
     roomSceneUrls: {},
     mascotAnimations: {
-      'idle': 'Survey',
-      'happy': 'Run',
-      'eat': 'Walk',
-      'sad': 'Survey',
-      'sleepy': 'Survey',
-      'wave': 'Run',
-      'hungry': 'Survey',
+      'idle': 'Scene',
+      'happy': 'Scene',
+      'eat': 'Scene',
+      'sad': 'Scene',
+      'sleepy': 'Scene',
+      'wave': 'Scene',
+      'hungry': 'Scene',
     },
   );
+}
+
+/// Maps shop SKUs ↔ room themes and outfit overlays.
+class CompanionCosmetics {
+  static const backgroundSkuByRoom = {
+    'room_1': 'bg_cozy',
+    'room_2': 'bg_modern',
+    'room_3': 'bg_nature',
+    'room_4': 'bg_room_4',
+  };
+
+  static const outfitOverlays = {
+    'outfit_scarf': '🧣',
+  };
+
+  static String? backgroundSkuForRoom(String roomKey) =>
+      backgroundSkuByRoom[CompanionAssets.normalizeRoomTheme(roomKey)];
+
+  static String? roomThemeForBackgroundSku(String sku) => switch (sku) {
+        'bg_cozy' => 'room_1',
+        'bg_modern' => 'room_2',
+        'bg_nature' => 'room_3',
+        'bg_room_4' => 'room_4',
+        _ => null,
+      };
+
+  static bool isRoomUnlocked(
+    String roomKey,
+    List<CompanionCatalogItem> catalog,
+  ) {
+    final normalized = CompanionAssets.normalizeRoomTheme(roomKey);
+    if (normalized == 'room_1') return true;
+    final sku = backgroundSkuForRoom(normalized);
+    if (sku == null) return false;
+    return catalog.any((c) => c.sku == sku && c.isOwned);
+  }
+
+  static List<String> outfitEmojis(Iterable<String> equippedSkus) =>
+      equippedSkus
+          .map((sku) => outfitOverlays[sku])
+          .whereType<String>()
+          .toList();
 }

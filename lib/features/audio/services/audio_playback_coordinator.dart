@@ -89,7 +89,6 @@ abstract final class AudioPlaybackCoordinator {
   static Future<void> _play(AudioTrackRecord track) async {
     final play = AudioPlaybackDelegate.playTrack;
     if (play == null) return;
-    await playback.stop();
     await play(track);
   }
 

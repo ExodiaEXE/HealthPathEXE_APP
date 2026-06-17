@@ -9,6 +9,7 @@ import 'package:health/features/auth/presentation/auth_screen.dart';
 import 'package:health/features/home/presentation/home_screen.dart';
 import 'package:health/features/payment/presentation/payment_modal.dart';
 import 'package:health/features/settings/presentation/settings_screen.dart';
+import 'package:health/features/subscription/presentation/subscription_sync_host.dart';
 import 'package:health/features/team/presentation/team_screen.dart';
 import 'package:health/shared/models/app_models.dart';
 import 'package:health/shared/providers/app_state_provider.dart';
@@ -47,9 +48,11 @@ class AppShell extends StatelessWidget {
             ),
           );
         }
-        return const AudioPiPHost(
-          child: AudioPlaybackBridge(
-            child: _AuthenticatedShell(),
+        return const SubscriptionSyncHost(
+          child: AudioPiPHost(
+            child: AudioPlaybackBridge(
+              child: _AuthenticatedShell(),
+            ),
           ),
         );
       },
